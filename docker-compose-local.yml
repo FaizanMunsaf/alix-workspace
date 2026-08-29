@@ -1,0 +1,138 @@
+name: "alix"
+
+services:
+  db:
+    container_name: alix-db
+    image: pgvector/pgvector:pg16
+    volumes:
+      - ./pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-contract_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${DB_USER:-postgres} -d $${DB_NAME:-contract_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alix-shared-net
+
+  rabbitmq:
+    container_name: alix-rabbitmq
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672" 
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-guest}
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - alix-shared-net
+
+  backend:
+    container_name: alix-backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: alix-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./core:/app/core
+      - ./backend:/app/backend
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - alix-shared-net
+
+  ds:
+    container_name: alix-ds
+    build:
+      context: .
+      dockerfile: ds/Dockerfile
+    image: alix-ds
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    volumes:
+      - ./core:/app/core
+      - ./ds:/app/ds
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - alix-shared-net
+
+  celery:
+    container_name: alix-celery
+    image: alix-backend
+    command: celery -A backend.workers.celery_app.celery worker --loglevel=info
+    env_file:
+      - .env
+    volumes:
+      - ./core:/app/core
+      - ./backend:/app/backend
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - alix-shared-net
+
+  celery-beat:
+    container_name: alix-celery-beat
+    image: alix-backend
+    command: celery -A backend.workers.celery_app.celery beat --loglevel=info
+    env_file:
+      - .env
+    volumes:
+      - ./core:/app/core
+      - ./backend:/app/backend
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - alix-shared-net
+
+  frontend:
+    container_name: alix-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - alix-shared-net
+
+networks:
+  alix-shared-net:
+    name: alix-shared-net
+    driver: bridge
