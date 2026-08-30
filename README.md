@@ -1,140 +1,117 @@
-# Alix - Legal Tech Document AST & Vector Analysis
+# Alix
 
-Alix is a legal tech platform designed for structural contract analysis, automated document processing, and high-performance vector search. Built using FastAPI, SQLAlchemy 2.0, PostgreSQL with `pgvector`, and React, Alix converts complex legal documents into structured Abstract Syntax Trees (AST) and context-aware embeddings.
-
----
-
-## 📐 Architecture & Workflow
-
-Below is the high-level workflow architecture for document ingestion, background task processing, and vector indexing:
+Legal tech platform for contract AST analysis and vector search. Built with React + Vite and FastAPI, SQLAlchemy 2.0, PostgreSQL + pgvector, and Alembic.
 
 ![Alix System Architecture & Workflow](./alix-workflow.jpg)
 
-### Core Architectural Choices
-
-* **FastAPI `BackgroundTasks`:** Keeps the architecture lightweight for initial development by executing asynchronous vector processing in-memory right after HTTP responses.
-* **Database & Vector Engine:** PostgreSQL 16 utilizing `pgvector` for storing 1536-dimensional embeddings (compatible with OpenAI models) alongside traditional relational models.
-* **Dual Database Drivers:** Asynchronous operations powered by `asyncpg` for web endpoints, with synchronous driver access reserved for migration operations via Alembic.
-
 ---
 
-## 🛠️ Tech Stack
-
-* **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0, Pydantic v2, Alembic
-* **Vector & Database:** PostgreSQL 16 (`pgvector/pgvector:pg16`), `asyncpg`
-* **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, Zustand, Tiptap, Radix UI
-* **DevOps:** Docker, Docker Compose
-
----
-
-## 📂 Project Structure
+## Project Structure
 
 ```text
-alix/
-├── alix-workflow.jpg          # System architecture diagram
-├── alembic/                   # Database migration files & env configuration
-│   ├── script.py.mako         # Migration template (pre-configured with pgvector)
-│   └── env.py
-├── backend/                   # FastAPI application & API endpoints
-├── core/                      # Shared models, settings, and database setup
-│   ├── config/
-│   │   └── settings.py        # Pydantic Settings reading .env
-│   ├── database.py            # Async engine & session lifecycle setup
-│   └── models/
-│       └── vector.py          # SQLAlchemy models with pgvector columns
-├── frontend/                  # React + Vite application
-├── alembic.ini                # Static Alembic configuration
-├── docker-compose.yml         # Container orchestration (db, backend, frontend)
-└── .env.example               # Template environment variables
+alix-assessment/
+├── alix-workflow.jpg
+├── docker-compose-local.yml   # Docker setup (db + backend)
+|── frontend/                  # React + Vite application
+└── backend/                   # Python app root - run everything from here
+    ├── main.py
+    ├── alembic/               # Migrations
+    ├── alembic.ini
+    ├── admin/                 # SQLAdmin views & templates
+    ├── api/                   # API routes
+    ├── core/
+    │   ├── config/settings.py
+    │   ├── database.py
+    │   └── models/            # SQLAlchemy models (pgvector 3072-dim)
+    ├── ds/                    # Data science / RAG modules
+    ├── requirements/
+    ├── scripts/
+    ├── Dockerfile
+    └── .env                   # App config (copy from .env.example)
 ```
 
----
-## 🚀 Quick Start
 
-### 1. Environment Setup
 
-Create a `.env` file in the root directory:
+## Git flow
+1. Run `pip install pre-commit ruff`
+2. Run `pre-commit install`
 
-```env
-DB_HOST=db
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=contract_db
+After that when commiting your changes pre-commit hook will check formatting in your changes.
+It will fix them if something is wrong, you can inspect affected files and commit again afterward.
 
-APP_NAME=alix
-DEBUG=True
-
-QUEUE_NAME=alix_queue
-SECRET_KEY=your_secret_key_here
-
-```
-
-### 2. Launching with Docker Compose
-
-Spin up the database, backend, and frontend containers in detached mode:
-
-```bash
-docker compose up -d
-
-```
-
-Services will be accessible at:
-
-* **Frontend:** `http://localhost:5173`
-* **Backend API Docs:** `http://localhost:8000/docs`
-* **PostgreSQL:** `localhost:5432`
 
 ---
 
-## 🗄️ Database Migrations
-
-Database schemas are managed statically via Alembic.
-
-### Generate a Migration
-
-When creating or modifying SQLAlchemy models inside `core/models/`:
+## Quick Start (Docker)
 
 ```bash
-docker compose exec backend alembic revision --autogenerate -m "describe_changes"
-
+# From project root
+docker compose -f docker-compose-local.yml up -d
 ```
 
-### Apply Migrations
+Uses `pgvector/pgvector:pg16` — **pgvector is included and managed automatically**. No manual extension setup needed.
 
-Apply pending migrations to the database:
-
-```bash
-docker compose exec backend alembic upgrade head
-
-```
-
-> **Note:** The `script.py.mako` template automatically imports `pgvector` into every newly generated migration script to prevent type registration errors.
+Copy `backend/.env.example` → `backend/.env` and set `DB_HOST=db` for full Docker, or `DB_HOST=localhost` if only running the DB container.
 
 ---
 
-## 🧪 Local Backend Setup (Without Docker)
+## Local Setup (Without Docker)
 
-If you prefer running the Python environment locally on your host machine:
+**Requirements:** Python 3.11+ (3.12 recommended)
 
-1. **Install dependencies:**
-```bash
-pip install -r requirements.txt
+### 1. Install PostgreSQL & pgvector
 
+- [PostgreSQL downloads](https://www.postgresql.org/download/)
+- [pgvector installation guide](https://github.com/pgvector/pgvector#installation)
+
+Create your database and user, then **enable pgvector once** as a PostgreSQL superuser:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
+> Your app user (e.g. `alix`) cannot run this — use the `postgres` superuser.
 
-2. **Ensure PostgreSQL with `pgvector` is running locally.**
-3. **Run database migrations:**
+### 2. Configure & run
+
 ```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate          # Windows
+pip install -r requirements/backend.txt
+
+copy .env.example .env         # set DB_HOST=localhost and credentials
+
 alembic upgrade head
-
+uvicorn main:app --reload --port 8000
 ```
 
+---
 
-4. **Start the FastAPI server:**
+## Backend URLs
+
+| Service | URL |
+|---------|-----|
+| Swagger | http://localhost:8000/docs |
+| ReDoc | http://localhost:8000/redoc |
+| Admin Panel | http://localhost:8000/admin |
+| Health Check | http://localhost:8000/test/ |
+
+Admin credentials are set in `backend/.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
+
+---
+
+## Migrations
+
+Run from `backend/`:
+
 ```bash
-uvicorn backend.main:app --reload --port 8000
-
+alembic revision --autogenerate -m "describe change"
+alembic upgrade head
 ```
 
+With Docker:
+
+```bash
+docker compose -f docker-compose-local.yml exec backend alembic upgrade head
+```

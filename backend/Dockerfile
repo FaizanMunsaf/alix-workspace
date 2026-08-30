@@ -6,11 +6,7 @@ COPY requirements/ /app/requirements/
 
 RUN pip install --no-cache-dir --upgrade -r /app/requirements/backend.txt
 
-COPY core/ /app/core
-COPY backend/ /app/backend
-COPY alembic/ /app/alembic
-COPY alembic.ini /app/alembic.ini
-COPY scripts/ /app/scripts
+COPY . /app
 
 RUN chmod +x /app/scripts/*
 

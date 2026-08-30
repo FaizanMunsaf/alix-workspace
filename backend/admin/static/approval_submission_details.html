@@ -1,0 +1,14 @@
+{% extends "sqladmin/details.html" %}
+{% block tail %}
+<style>
+    a[data-bs-target="#modal-confirmation-reject"] {
+        background-color: red;
+        text-shadow: 1px 1px 2px black;
+    }
+
+    a[data-bs-target="#modal-confirmation-approve"] {
+        background-color: green;
+        text-shadow: 1px 1px 2px black;
+    }
+</style>
+{% endblock %}

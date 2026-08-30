@@ -1,0 +1,27 @@
+<div id="upload-modal" class="modal" style="
+  display: none; /* Hidden by default */
+  position: fixed; /* Stay in place */
+  z-index: 10000; /* Sit on top */
+  left: 0;
+  top: 0;
+  width: 100%; /* Full width */
+  height: 100%; /* Full height */
+  overflow: auto; /* Enable scroll if needed */
+  background-color: rgb(0,0,0); /* Fallback color */
+  background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+">
+    <div style="background-color: #fefefe;
+  margin: 15% auto; /* 15% from the top and centered */
+  padding: 20px;
+  border: 1px solid #888;
+  width: 30em; /* Could be more or less, depending on screen size */">
+        <h3 style="margin-bottom:1rem;">Upload a Text Document or a Zip Archive</h3>
+        <form id="upload-form">
+            <input type="file" name="file" accept=".txt,.zip" required />
+            <div style="margin-top:1rem;">
+                <button type="submit" class="btn btn-light me-3 is-primary">Upload</button>
+                <button type="button" class="btn btn-dark ms-3" id="upload-cancel">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>

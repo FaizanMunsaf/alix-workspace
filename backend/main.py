@@ -4,12 +4,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from backend.admin.admin import init_admin
-from backend.api.healthcheck import router as health_router
-
-
-from backend.core.config.settings import settings
-from core.messaging import broker
+from admin.admin import init_admin
+from api.health_test import router as health_router
+from core.config.settings import settings
+from core.database import init_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,9 +18,8 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await broker.connect()
+    await init_db()
     yield
-    await broker.close()
 
 
 app = FastAPI(

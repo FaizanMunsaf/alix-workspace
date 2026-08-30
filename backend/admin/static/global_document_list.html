@@ -1,0 +1,48 @@
+{% extends "sqladmin/list.html" %}
+
+{% block tail %}
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        // Insert a button to upload a file
+        const actionsButton = document.querySelector("#dropdownMenuButton");
+        if (actionsButton) {
+            actionsButton.parentElement.classList.replace("col-4", "col-6")
+
+            const importBtn = document.createElement("a");
+            importBtn.textContent = "Import";
+            importBtn.className = "btn btn-outline btn-primary ml-2";
+            importBtn.style.marginLeft = "20px"
+            importBtn.onclick = () => document.getElementById("upload-modal").style.display = "block";
+
+            // Insert the button next to the Actions button
+            actionsButton.parentElement.insertAdjacentElement("beforeend", importBtn);
+        }
+
+        // Handle form submit
+        document.getElementById("upload-form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const data = new FormData(form);
+            const response = await fetch(window.location.pathname.replace(/\/list.*/, '') + "/import", {
+                method: "POST",
+                body: data
+            });
+            const result = await response.json();
+            if (result.success) {
+                debugger;
+                alert(`Upload successful.\n${result.rows} documents were updated.\n ${result.skipped} documents were skipped.`);
+                location.reload();
+            } else {
+                alert("Upload failed: " + (result.error || "unknown error"));
+            }
+        });
+
+        // Cancel button
+        document.getElementById("upload-cancel").addEventListener("click", () => {
+            document.getElementById("upload-modal").style.display = "none";
+        });
+    });
+</script>
+{% endblock %}
+{% include "global_document_upload_window.html" %}

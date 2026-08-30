@@ -1,6 +1,10 @@
 from functools import cached_property
+from pathlib import Path
+
 from sqlalchemy.engine import URL
 from pydantic_settings import BaseSettings
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -30,6 +34,11 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
 
+    # Embeddings
+    EMBEDDING_MODEL_NAME: str = "gemini-embedding-2"
+    EMBEDDING_DIMENSION: int = 3072
+    CURRENT_VECTORSTORE: str = "pgvector"
+
     def _create_database_url(self, drivername: str) -> str:
         url = URL.create(
             drivername=drivername,
@@ -50,7 +59,7 @@ class Settings(BaseSettings):
         return self._create_database_url("postgresql+asyncpg")
 
     class Config:
-        env_file = ".env"
+        env_file = BACKEND_DIR / ".env"
         case_sensitive = True
         extra = "allow"
 

@@ -8,8 +8,10 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 
 from .config.settings import settings
 
+
 class Base(DeclarativeBase):
     pass
+
 
 engine = create_async_engine(
     settings.ASYNC_DATABASE_URL,
@@ -19,11 +21,13 @@ engine = create_async_engine(
     max_overflow=20,
 )
 
+
 # Event listener to automatically register pgvector custom types on every raw asyncpg connection
 @event.listens_for(engine.sync_engine, "connect")
 def connect(dbapi_connection, connection_record):
     """Registers vector codec bindings directly onto the underlying asyncpg driver connection."""
     dbapi_connection.run_async(register_vector)
+
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
@@ -46,12 +50,24 @@ SyncSessionLocal = sessionmaker(
     autoflush=False,
 )
 
+
 # 3. SCHEMA & EXTENSION INITIALIZATION
 async def init_db() -> None:
-    """Creates the vector extension inside PostgreSQL and provisions ORM tables."""
+    """Verify pgvector is available and provision ORM tables."""
+    import core.models  # noqa: F401
+
     async with engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        result = await conn.execute(
+            text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
+        )
+        if result.scalar() is None:
+            raise RuntimeError(
+                "The pgvector extension is not enabled on this database. "
+                "Run scripts/setup-postgres.sql once as a PostgreSQL superuser, "
+                "then retry."
+            )
         await conn.run_sync(Base.metadata.create_all)
+
 
 # Dependency for FastAPI
 async def get_db() -> AsyncSession:

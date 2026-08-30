@@ -23,6 +23,6 @@ class LLMModel(ABC):
 
     @abstractmethod
     def chat_stream(
-        self, system_prompt: str, message: str, chat_history: list[dict] | None  = None
+        self, system_prompt: str, message: str, chat_history: list[dict] | None = None
     ) -> str:
         pass
