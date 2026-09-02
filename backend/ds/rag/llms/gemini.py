@@ -1,12 +1,15 @@
 import google.generativeai as genai
 from langchain_core.documents import Document
-from ds.llm.base import LLMModel  # import your abstract class
+
+from core.config.settings import settings
+
+from .base import LLMModel
 
 
 class GeminiLLM(LLMModel):
-    def __init__(
-        self, model_name: str = "gemini-2.0-flash-exp", api_key: str | None = None
-    ):
+    def __init__(self, model_name: str | None = None, api_key: str | None = None):
+        model_name = model_name or settings.LLM_MODEL_NAME
+        api_key = api_key or settings.GEMINI_API_KEY or None
         genai.configure(api_key=api_key)  # type: ignore
         self.model = genai.GenerativeModel(model_name)  # type: ignore
 

@@ -34,10 +34,14 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = 500
     CHUNK_OVERLAP: int = 50
 
-    # Embeddings
+    # Embeddings / RAG providers
+    GEMINI_API_KEY: str = ""
     EMBEDDING_MODEL_NAME: str = "gemini-embedding-2"
     EMBEDDING_DIMENSION: int = 3072
+    LLM_MODEL_NAME: str = "gemini-2.0-flash-exp"
     CURRENT_VECTORSTORE: str = "pgvector"
+    CURRENT_EMBEDDING: str = "gemini"
+    CURRENT_LLM: str = "gemini"
 
     def _create_database_url(self, drivername: str) -> str:
         url = URL.create(
@@ -57,6 +61,10 @@ class Settings(BaseSettings):
     @cached_property
     def ASYNC_DATABASE_URL(self) -> str:
         return self._create_database_url("postgresql+asyncpg")
+
+    @cached_property
+    def PSYCOPG_DATABASE_URL(self) -> str:
+        return self._create_database_url("postgresql+psycopg")
 
     class Config:
         env_file = BACKEND_DIR / ".env"
