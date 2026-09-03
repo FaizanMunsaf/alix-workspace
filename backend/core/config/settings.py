@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     EMBEDDING_MODEL_NAME: str = "gemini-embedding-2"
     EMBEDDING_DIMENSION: int = 3072
-    LLM_MODEL_NAME: str = "gemini-2.0-flash-exp"
+    LLM_MODEL_NAME: str = "gemini-3.5-flash"
     CURRENT_VECTORSTORE: str = "pgvector"
     CURRENT_EMBEDDING: str = "gemini"
     CURRENT_LLM: str = "gemini"
