@@ -2,7 +2,7 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
 from admin.admin import init_admin
 from api.documents import router as documents_router
@@ -33,6 +33,7 @@ app = FastAPI(
 init_admin(app)
 
 
-app.include_router(health_router)
-app.include_router(documents_router)
-app.include_router(qa_router)
+api_v1 = APIRouter(prefix="/api/v1")
+for router in (health_router, documents_router, qa_router):
+    api_v1.include_router(router)
+app.include_router(api_v1)

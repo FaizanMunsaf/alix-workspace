@@ -12,7 +12,7 @@ class BaseCRUD(Generic[T, S]):
         self.model = model
 
     def create(self, db: Session, obj_in: S):
-        db_obj = self.model(**obj_in.dict())
+        db_obj = self.model(**obj_in.model_dump(exclude_none=True))
         db.add(db_obj)
         db.commit()
         db.refresh(db_obj)

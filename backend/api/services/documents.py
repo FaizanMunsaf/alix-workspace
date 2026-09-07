@@ -1,10 +1,20 @@
-from fastapi import HTTPException
+import uuid
+from pathlib import Path
 
-from core.config.settings import settings
+from fastapi import BackgroundTasks, HTTPException, status
+
+from api.backgrounds import enqueue_document_parse
+from core.config.settings import BACKEND_DIR
 from core.database import get_sync_db_session
-from core.models.document_version import DocumentVersion
-from core.models.documents import Document
-from ds.rag.vectorstores import get_vectorstore
+from core.repositories import document_crud, document_version_crud
+from core.schemas.document import CreateDocument, DocumentUploadResponse
+from core.schemas.document_version import CreateDocumentVersion
+
+UPLOAD_DIR = BACKEND_DIR / "uploads"
+DOCX_CONTENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/octet-stream",
+}
 
 
 def upload_document(
@@ -13,58 +23,72 @@ def upload_document(
     data: bytes,
     content_type: str | None,
     title: str | None,
-) -> dict:
-    try:
-        content = data.decode("utf-8")
-    except UnicodeDecodeError:
+    background_tasks: BackgroundTasks,
+) -> DocumentUploadResponse:
+    safe_name = Path(filename).name
+    if not safe_name.lower().endswith(".docx"):
         raise HTTPException(
-            status_code=400, detail="File must be UTF-8 text."
-        ) from None
-    if not content.strip():
-        raise HTTPException(status_code=400, detail="File is empty.")
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .docx files are accepted.",
+        )
+    if content_type and content_type.lower() not in DOCX_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .docx files are accepted.",
+        )
+    if not data or not data.startswith(b"PK"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is empty or is not a valid .docx document.",
+        )
 
-    doc_title = (title or filename).strip() or "untitled"
-    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "txt"
+    doc_title = (title or Path(safe_name).stem).strip() or "untitled"
+    document_id = uuid.uuid4()
+    version_id = uuid.uuid4()
+
+    dest_dir = UPLOAD_DIR / str(document_id)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    file_path = dest_dir / safe_name
+    file_path.write_bytes(data)
 
     with get_sync_db_session() as db:
-        document = Document(
-            title=doc_title,
-            document_type=suffix,
-            status="ingested",
-            metadata_info={"filename": filename, "content_type": content_type},
+        document = document_crud.create(
+            db,
+            CreateDocument(
+                id=document_id,
+                title=doc_title,
+                document_type="docx",
+                status="processing",
+                metadata_info={"filename": safe_name, "content_type": content_type},
+            ),
         )
-        db.add(document)
-        db.flush()
-
-        version = DocumentVersion(
+        version = document_version_crud.create(
+            db,
+            CreateDocumentVersion(
+                id=version_id,
+                document_id=document.id,
+                version_number=1,
+                file_path=str(file_path),
+                processing_status="pending",
+            ),
+        )
+        response = DocumentUploadResponse(
             document_id=document.id,
-            version_number=1,
-            raw_text=content,
-            file_path=filename,
-            processing_status="completed",
+            version_id=version.id,
+            title=document.title,
+            status=document.status,
+            processing_status=version.processing_status,
+            message="Document uploaded. Parsing started in the background.",
+            filename=safe_name,
+            file_path=str(file_path),
         )
-        db.add(version)
-        db.flush()
 
-        document_id = str(document.id)
-        version_id = str(version.id)
-        db.commit()
-
-    chunks = get_vectorstore().ingest_text(
-        text=content,
-        metadata={
-            "document_id": document_id,
-            "version_id": version_id,
-            "title": doc_title,
-            "filename": filename,
-        },
-        chunk_size=settings.CHUNK_SIZE,
-        chunk_overlap=settings.CHUNK_OVERLAP,
+    enqueue_document_parse(
+        background_tasks,
+        document_id=str(response.document_id),
+        version_id=str(response.version_id),
+        file_path=response.file_path,
+        title=response.title,
+        filename=response.filename,
     )
-
-    return {
-        "document_id": document_id,
-        "version_id": version_id,
-        "title": doc_title,
-        "chunks": len(chunks),
-    }
+    return response
