@@ -1,7 +1,10 @@
 from .document import (
     CreateDocument,
+    DocumentDetailResponse,
+    DocumentListItem,
     DocumentResponse,
     DocumentUploadResponse,
+    SaveDocumentContent,
     UpdateDocument,
 )
 from .document_ast_node import (
@@ -14,19 +17,32 @@ from .document_version import (
     DocumentVersionResponse,
     UpdateDocumentVersion,
 )
+from .clause_embedding import (
+    ClauseEmbedInput,
+    ClauseEmbeddingResponse,
+    ClauseSearchHit,
+    CreateClauseEmbedding,
+)
 from .diff import ASTDiffResponse, DiffChangeResponse, DiffRequest
 from .qa import QARequest
 
 __all__ = [
     "ASTDiffResponse",
+    "ClauseEmbedInput",
+    "ClauseEmbeddingResponse",
+    "ClauseSearchHit",
+    "CreateClauseEmbedding",
     "CreateDocument",
     "CreateDocumentASTNode",
     "CreateDocumentVersion",
     "DiffChangeResponse",
     "DiffRequest",
+    "DocumentDetailResponse",
+    "DocumentListItem",
     "DocumentASTNodeResponse",
     "DocumentResponse",
     "DocumentUploadResponse",
+    "SaveDocumentContent",
     "DocumentVersionResponse",
     "QARequest",
     "UpdateDocument",

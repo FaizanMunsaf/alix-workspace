@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from core.schemas.document_version import DocumentVersionResponse
+
 
 class CreateDocument(BaseModel):
     id: uuid.UUID | None = None
@@ -42,3 +44,30 @@ class DocumentUploadResponse(BaseModel):
     message: str
     filename: str
     file_path: str = Field(exclude=True)
+
+
+class DocumentListItem(BaseModel):
+    document_id: uuid.UUID
+    version_id: uuid.UUID | None = None
+    title: str
+    status: str
+    processing_status: str
+    version_number: int = 1
+    created_at: datetime
+
+
+class DocumentDetailResponse(BaseModel):
+    document_id: uuid.UUID
+    title: str
+    status: str
+    document_type: str
+    html: str | None = None
+    active_version_id: uuid.UUID | None = None
+    versions: list[DocumentVersionResponse]
+
+    model_config = {"from_attributes": True}
+
+
+class SaveDocumentContent(BaseModel):
+    html: str = Field(..., description="TipTap/HTML document body")
+    version_id: uuid.UUID | None = None

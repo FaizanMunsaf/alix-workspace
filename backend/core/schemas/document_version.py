@@ -28,6 +28,8 @@ class DocumentVersionResponse(BaseModel):
     raw_text: str | None
     file_path: str | None
     processing_status: str
+    ast_json: dict | None = None
+    html: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

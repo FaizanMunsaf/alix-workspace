@@ -3,21 +3,25 @@ import uuid
 from pathlib import Path
 
 from fastapi import BackgroundTasks
-from langchain_core.documents import Document as LangchainDocument
 
 from core.database import get_sync_db_session
 from core.parsers import ASTNode, parse_docx
 from core.repositories import (
+    clause_embedding_crud,
     document_ast_node_crud,
     document_crud,
     document_version_crud,
 )
+from core.schemas.clause_embedding import ClauseEmbedInput
 from core.schemas.document import UpdateDocument
 from core.schemas.document_ast_node import CreateDocumentASTNode
 from core.schemas.document_version import UpdateDocumentVersion
-from ds.rag.vectorstores import get_vectorstore
+from core.utils.export import ast_to_html
+from ds.rag.embeddings.embed_clauses import embed_clauses
 
 logger = logging.getLogger(__name__)
+
+_SKIP_EMBED_TYPES = {"table_cell"}
 
 
 def enqueue_document_parse(
@@ -53,13 +57,7 @@ def parse_and_ingest_document(
             raise ValueError("No text could be extracted from the .docx file.")
 
         version_uuid = uuid.UUID(version_id)
-        ast_rows, vector_docs = _flatten_ast(
-            tree,
-            version_id=version_uuid,
-            document_id=document_id,
-            title=title,
-            filename=filename,
-        )
+        ast_rows, embed_inputs = _flatten_ast(tree, version_id=version_uuid)
 
         with get_sync_db_session() as db:
             document = document_crud.get(db, document_id)
@@ -69,20 +67,37 @@ def parse_and_ingest_document(
                 return
             if ast_rows:
                 document_ast_node_crud.create_many(db, ast_rows)
-            document_crud.update(db, document_id, UpdateDocument(status="ingested"))
             document_version_crud.update(
                 db,
                 version_id,
                 UpdateDocumentVersion(
                     raw_text=raw_text,
-                    ast_json={"nodes": [node.to_dict() for node in tree]},
-                    processing_status="completed",
+                    ast_json={
+                        "nodes": [node.to_dict() for node in tree],
+                        "html": ast_to_html(tree),
+                    },
                 ),
             )
 
-        if vector_docs:
-            get_vectorstore().store(vector_docs)
-        logger.info("Parsed document %s into %s AST nodes", document_id, len(ast_rows))
+        clause_rows = embed_clauses(embed_inputs)
+
+        with get_sync_db_session() as db:
+            if clause_rows:
+                clause_embedding_crud.create_many(db, clause_rows)
+            document_crud.update(db, document_id, UpdateDocument(status="ingested"))
+            document_version_crud.update(
+                db,
+                version_id,
+                UpdateDocumentVersion(processing_status="completed"),
+            )
+
+        logger.info(
+            "Parsed document %s (%s) into %s AST nodes and %s clause embeddings",
+            document_id,
+            filename or title,
+            len(ast_rows),
+            len(clause_rows),
+        )
     except Exception:
         logger.exception("Failed to parse document %s", document_id)
         _set_processing_status(document_id, version_id, "failed", "failed")
@@ -105,13 +120,10 @@ def _flatten_ast(
     nodes: list[ASTNode],
     *,
     version_id: uuid.UUID,
-    document_id: str,
-    title: str,
-    filename: str,
     parent_id: uuid.UUID | None = None,
-) -> tuple[list[CreateDocumentASTNode], list[LangchainDocument]]:
+) -> tuple[list[CreateDocumentASTNode], list[ClauseEmbedInput]]:
     rows: list[CreateDocumentASTNode] = []
-    docs: list[LangchainDocument] = []
+    embed_inputs: list[ClauseEmbedInput] = []
     for index, node in enumerate(nodes):
         node_id = uuid.uuid4()
         rows.append(
@@ -126,31 +138,35 @@ def _flatten_ast(
                 metadata_info=node.metadata,
             )
         )
-        page_content = "\n".join(
-            part for part in (node.title, node.content) if part and part.strip()
-        )
-        if page_content:
-            docs.append(
-                LangchainDocument(
-                    page_content=page_content,
-                    metadata={
-                        "document_id": document_id,
-                        "version_id": str(version_id),
-                        "ast_node_id": str(node_id),
-                        "node_type": node.node_type,
-                        "title": title,
-                        "filename": filename,
-                    },
-                )
-            )
-        child_rows, child_docs = _flatten_ast(
+        embed_input = _clause_embed_input(node, node_id=node_id, version_id=version_id)
+        if embed_input is not None:
+            embed_inputs.append(embed_input)
+        child_rows, child_embeds = _flatten_ast(
             node.children,
             version_id=version_id,
-            document_id=document_id,
-            title=title,
-            filename=filename,
             parent_id=node_id,
         )
         rows.extend(child_rows)
-        docs.extend(child_docs)
-    return rows, docs
+        embed_inputs.extend(child_embeds)
+    return rows, embed_inputs
+
+
+def _clause_embed_input(
+    node: ASTNode,
+    *,
+    node_id: uuid.UUID,
+    version_id: uuid.UUID,
+) -> ClauseEmbedInput | None:
+    if node.node_type in _SKIP_EMBED_TYPES:
+        return None
+    content = "\n".join(
+        part for part in (node.title, node.content) if part and part.strip()
+    )
+    if not content:
+        return None
+    return ClauseEmbedInput(
+        version_id=version_id,
+        ast_node_id=node_id,
+        clause_category=node.node_type,
+        content=content,
+    )

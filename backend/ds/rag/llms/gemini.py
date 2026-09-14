@@ -1,5 +1,4 @@
 import google.generativeai as genai
-from langchain_core.documents import Document
 
 from core.config.settings import settings
 
@@ -13,8 +12,8 @@ class GeminiLLM(LLMModel):
         genai.configure(api_key=api_key)  # type: ignore
         self.model = genai.GenerativeModel(model_name)  # type: ignore
 
-    def generate(self, query: str, context: list[Document]) -> str:
-        context_text = "\n".join(doc.page_content for doc in context)
+    def generate(self, query: str, context: list[str]) -> str:
+        context_text = "\n".join(context)
         prompt = f"Context:\n{context_text}\n\nQuestion:\n{query}"
         response = self.model.generate_content(prompt)
         return response.text

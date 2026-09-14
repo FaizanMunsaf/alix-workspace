@@ -4,6 +4,7 @@ from tests.helpers.docx import build_label_contract_docx, build_msa_docx
 from tests.helpers.tree import by_title, by_type, first_title, walk
 
 
+# this function use for check parser builds sections, clauses and sub-clauses
 def test_parse_complex_legal_document_structure():
     raw_text, tree = parse_docx(build_msa_docx())
 
@@ -37,6 +38,7 @@ def test_parse_complex_legal_document_structure():
     assert "agreed in writing" in (roman.content or "")
 
 
+# this function use for check parser keeps tables, Q1 and bold labels
 def test_parse_complex_legal_document_table_and_questions():
     _, tree = parse_docx(build_msa_docx())
 
@@ -74,6 +76,7 @@ def test_parse_complex_legal_document_table_and_questions():
     assert "email and courier" in (notice.content or "")
 
 
+# this function use for check parser works when word has no heading styles
 def test_parse_label_based_legal_document_without_heading_styles():
     raw_text, tree = parse_docx(build_label_contract_docx())
 
@@ -93,6 +96,7 @@ def test_parse_label_based_legal_document_without_heading_styles():
     assert roman.metadata["source"] == "roman"
 
 
+# this function use for check raw text keeps the same order as the document
 def test_parse_docx_preserves_document_order_in_raw_text():
     raw_text, tree = parse_docx(build_msa_docx())
 
@@ -102,6 +106,7 @@ def test_parse_docx_preserves_document_order_in_raw_text():
     assert len(list(walk(tree))) >= 20
 
 
+# this function use for check empty paragraphs are ignored
 def test_parse_empty_paragraphs_are_ignored():
     from tests.helpers.docx import build_docx
 

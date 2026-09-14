@@ -1,3 +1,4 @@
+import re
 import uuid
 from pathlib import Path
 
@@ -6,15 +7,27 @@ from fastapi import BackgroundTasks, HTTPException, status
 from api.backgrounds import enqueue_document_parse
 from core.config.settings import BACKEND_DIR
 from core.database import get_sync_db_session
+from core.models.document_version import DocumentVersion
 from core.repositories import document_crud, document_version_crud
-from core.schemas.document import CreateDocument, DocumentUploadResponse
-from core.schemas.document_version import CreateDocumentVersion
+from core.schemas.document import (
+    CreateDocument,
+    DocumentDetailResponse,
+    DocumentListItem,
+    DocumentUploadResponse,
+)
+from core.schemas.document_version import (
+    CreateDocumentVersion,
+    DocumentVersionResponse,
+    UpdateDocumentVersion,
+)
+from core.utils.export import editor_html, html_to_docx, html_to_text
 
 UPLOAD_DIR = BACKEND_DIR / "uploads"
 DOCX_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/octet-stream",
 }
+_UNSAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def upload_document(
@@ -92,3 +105,157 @@ def upload_document(
         filename=response.filename,
     )
     return response
+
+
+def list_documents() -> list[DocumentListItem]:
+    with get_sync_db_session() as db:
+        documents = sorted(
+            document_crud.get_all(db),
+            key=lambda document: document.created_at,
+            reverse=True,
+        )
+        items: list[DocumentListItem] = []
+        for document in documents:
+            versions = document_version_crud.list_by_document_id(db, str(document.id))
+            latest = versions[-1] if versions else None
+            items.append(
+                DocumentListItem(
+                    document_id=document.id,
+                    version_id=latest.id if latest else None,
+                    title=document.title,
+                    status=document.status,
+                    processing_status=latest.processing_status if latest else "pending",
+                    version_number=latest.version_number if latest else 1,
+                    created_at=document.created_at,
+                )
+            )
+        return items
+
+
+def get_document(document_id: str) -> DocumentDetailResponse:
+    with get_sync_db_session() as db:
+        return _document_detail(db, document_id)
+
+
+def save_document_content(
+    document_id: str,
+    *,
+    html: str,
+    version_id: str | None = None,
+) -> DocumentDetailResponse:
+    markup = html.strip()
+    if not markup:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document content is empty.",
+        )
+
+    with get_sync_db_session() as db:
+        document = document_crud.get(db, document_id)
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document was not found.",
+            )
+        versions = document_version_crud.list_by_document_id(db, document_id)
+        if not versions:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document has no versions to save.",
+            )
+        version = _pick_version(versions, version_id)
+        ast_json = dict(version.ast_json or {})
+        ast_json["html"] = markup
+        dest_dir = UPLOAD_DIR / str(document.id)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        working_path = dest_dir / "working.docx"
+        working_path.write_bytes(html_to_docx(markup))
+        document_version_crud.update(
+            db,
+            str(version.id),
+            UpdateDocumentVersion(
+                raw_text=html_to_text(markup) or version.raw_text,
+                file_path=str(working_path),
+                ast_json=ast_json,
+            ),
+        )
+        return _document_detail(db, document_id)
+
+
+def export_document_docx(
+    document_id: str,
+    *,
+    version_id: str | None = None,
+) -> tuple[bytes, str]:
+    with get_sync_db_session() as db:
+        document = document_crud.get(db, document_id)
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document was not found.",
+            )
+        versions = document_version_crud.list_by_document_id(db, document_id)
+        if not versions:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document has no versions to export.",
+            )
+        version = _pick_version(versions, version_id)
+        markup = editor_html(version.ast_json)
+        if markup.strip():
+            data = html_to_docx(markup)
+        elif version.file_path and Path(version.file_path).is_file():
+            data = Path(version.file_path).read_bytes()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document has no editable content to export yet.",
+            )
+        filename = _safe_filename(document.title) + ".docx"
+        return data, filename
+
+
+def _document_detail(db, document_id: str) -> DocumentDetailResponse:
+    document = document_crud.get(db, document_id)
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document was not found.",
+        )
+    versions = document_version_crud.list_by_document_id(db, document_id)
+    payload = [_version_response(version) for version in versions]
+    latest = payload[-1] if payload else None
+    return DocumentDetailResponse(
+        document_id=document.id,
+        title=document.title,
+        status=document.status,
+        document_type=document.document_type,
+        html=latest.html if latest else None,
+        active_version_id=latest.id if latest else None,
+        versions=payload,
+    )
+
+
+def _version_response(version: DocumentVersion) -> DocumentVersionResponse:
+    return DocumentVersionResponse.model_validate(version).model_copy(
+        update={"html": editor_html(version.ast_json)}
+    )
+
+
+def _pick_version(
+    versions: list[DocumentVersion], version_id: str | None
+) -> DocumentVersion:
+    if version_id is None:
+        return versions[-1]
+    for version in versions:
+        if str(version.id) == str(version_id):
+            return version
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Document version was not found.",
+    )
+
+
+def _safe_filename(title: str) -> str:
+    cleaned = _UNSAFE_FILENAME.sub("-", (title or "contract").strip())[:80]
+    return cleaned.strip("-") or "contract"

@@ -3,6 +3,7 @@ import sys
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from admin.admin import init_admin
 from api.documents import router as documents_router
@@ -31,6 +32,14 @@ app = FastAPI(
 )
 
 init_admin(app)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 api_v1 = APIRouter(prefix="/api/v1")

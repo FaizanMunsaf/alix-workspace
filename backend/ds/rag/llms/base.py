@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from langchain_core.documents import Document
 
 
 class LLMModel(ABC):
@@ -8,7 +7,7 @@ class LLMModel(ABC):
     """
 
     @abstractmethod
-    def generate(self, query: str, context: list[Document]) -> str:
+    def generate(self, query: str, context: list[str]) -> str:
         pass
 
     @abstractmethod

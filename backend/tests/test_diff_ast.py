@@ -4,7 +4,7 @@ from core.parsers import ASTNode, parse_docx
 from tests.helpers.docx import build_msa_docx
 
 
-# TODO: Remove this test
+# this function use for build a clause node in tests
 def _clause(
     number: str, content: str, children: list[ASTNode] | None = None
 ) -> ASTNode:
@@ -18,7 +18,7 @@ def _clause(
     )
 
 
-# TODO: Remove this test
+# this function use for build a sub-clause node in tests
 def _sub(mark: str, content: str, source: str = "letter") -> ASTNode:
     return ASTNode(
         node_type="sub_clause",
@@ -29,12 +29,12 @@ def _sub(mark: str, content: str, source: str = "letter") -> ASTNode:
     )
 
 
-# TODO: Remove this test
+# this function use for build a section node in tests
 def _section(title: str, children: list[ASTNode]) -> ASTNode:
     return ASTNode(node_type="section", level=1, title=title, children=children)
 
 
-# TODO: Remove this test
+# this function use for check same trees have no diff
 def test_diff_identical_trees_is_empty():
     tree = [_section("Article 1", [_clause("1.1", "Same text.")])]
     result = diff_ast(tree, tree)
@@ -45,7 +45,7 @@ def test_diff_identical_trees_is_empty():
     assert result.to_dict()["summary"] == {"added": 0, "deleted": 0, "modified": 0}
 
 
-# TODO: Remove this test
+# this function use for check added, deleted and modified clauses
 def test_diff_detects_added_deleted_and_modified_clauses():
     old = [
         _section(
@@ -89,7 +89,7 @@ def test_diff_detects_added_deleted_and_modified_clauses():
     assert result.to_dict()["summary"] == {"added": 2, "deleted": 1, "modified": 1}
 
 
-# TODO: Remove this test
+# this function use for check similar paragraphs count as modified
 def test_diff_treats_similar_unnumbered_paragraphs_as_modified():
     old = [
         ASTNode(
@@ -114,7 +114,7 @@ def test_diff_treats_similar_unnumbered_paragraphs_as_modified():
     assert result.modified[0].fields == ["content"]
 
 
-# TODO: Remove this test
+# this function use for check diff works with saved ast_json
 def test_diff_accepts_persisted_ast_json_payload():
     old = {"nodes": [_clause("3.1", "No consequential damages.").to_dict()]}
     new = {"nodes": [_clause("3.1", "No indirect or consequential damages.").to_dict()]}
@@ -126,7 +126,7 @@ def test_diff_accepts_persisted_ast_json_payload():
     assert result.deleted == []
 
 
-# TODO: Remove this test
+# this function use for check diff on two parsed legal document versions
 def test_diff_parsed_legal_document_versions():
     _, old_tree = parse_docx(build_msa_docx())
     _, new_tree = parse_docx(
