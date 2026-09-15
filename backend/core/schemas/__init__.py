@@ -24,6 +24,13 @@ from .clause_embedding import (
     CreateClauseEmbedding,
 )
 from .diff import ASTDiffResponse, DiffChangeResponse, DiffRequest
+from .edits import (
+    ApplyEditRequest,
+    ApplyEditResponse,
+    EditPatch,
+    ProposeEditRequest,
+    ProposeEditResponse,
+)
 from .qa import QARequest
 
 __all__ = [
@@ -37,6 +44,11 @@ __all__ = [
     "CreateDocumentVersion",
     "DiffChangeResponse",
     "DiffRequest",
+    "ApplyEditRequest",
+    "ApplyEditResponse",
+    "EditPatch",
+    "ProposeEditRequest",
+    "ProposeEditResponse",
     "DocumentDetailResponse",
     "DocumentListItem",
     "DocumentASTNodeResponse",

@@ -1,3 +1,5 @@
+import json
+
 import google.generativeai as genai
 
 from core.config.settings import settings
@@ -26,9 +28,11 @@ class GeminiLLM(LLMModel):
                     response_mime_type="application/json"
                 ),  # type: ignore
             )
-            return response.text  # type: ignore
-        else:
-            response = self.model.generate_content(prompt)
+            return json.loads(response.text)
+        response = self.model.generate_content(prompt)
+        try:
+            return json.loads(response.text)
+        except json.JSONDecodeError:
             return {"response": response.text}
 
     def chat(

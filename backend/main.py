@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from admin.admin import init_admin
 from api.documents import router as documents_router
+from api.edits import router as edits_router
 from api.health_test import router as health_router
 from api.qa import router as qa_router
 from core.config.settings import settings
@@ -43,6 +44,6 @@ app.add_middleware(
 
 
 api_v1 = APIRouter(prefix="/api/v1")
-for router in (health_router, documents_router, qa_router):
+for router in (health_router, documents_router, edits_router, qa_router):
     api_v1.include_router(router)
 app.include_router(api_v1)
