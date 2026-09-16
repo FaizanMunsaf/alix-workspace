@@ -14,36 +14,7 @@ from core.schemas.edits import (
 from core.utils.edits import PatchConflict, apply_text_patch, parse_llm_json
 from ds.rag.embeddings import get_embedding_model
 from ds.rag.llms import get_llm
-
-_SELECTION_PROMPT = """You are editing a legal contract. Rewrite ONLY the selected passage.
-Do not change unrelated clauses. Keep clause numbering if it appears in the selection.
-Return JSON with keys: after (full replacement text), rationale (one sentence).
-
-Instruction:
-{instruction}
-
-Selected passage:
-{selection}
-"""
-
-_DOCUMENT_PROMPT = """You are planning scoped edits to a legal contract.
-Use ONLY the candidate clauses below. Do not invent clauses.
-If a candidate does not need to change, omit it.
-before must be an exact excerpt copied from a candidate.
-Return JSON:
-{{
-  "plan": ["short label of each change"],
-  "patches": [
-    {{"target": "label", "before": "exact excerpt", "after": "replacement", "rationale": "why"}}
-  ]
-}}
-
-Instruction:
-{instruction}
-
-Candidate clauses:
-{clauses}
-"""
+from ds.rag.prompts import load_prompt
 
 
 def propose_edits(
@@ -110,7 +81,9 @@ def _propose_selection(
             detail="Select a clause or passage before asking for a scoped edit.",
         )
     payload = _llm_json(
-        _SELECTION_PROMPT.format(instruction=instruction, selection=selected)
+        load_prompt("edit_selection").format(
+            instruction=instruction, selection=selected
+        )
     )
     after = str(payload.get("after") or "").strip()
     if not after:
@@ -163,7 +136,9 @@ def _propose_document(document_id: str, *, instruction: str) -> ProposeEditRespo
         f"- [{hit.clause_category}] {hit.content}" for hit in hits
     )
     payload = _llm_json(
-        _DOCUMENT_PROMPT.format(instruction=instruction, clauses=clause_block)
+        load_prompt("edit_document").format(
+            instruction=instruction, clauses=clause_block
+        )
     )
     raw_patches = payload.get("patches") or []
     allowed = [hit.content for hit in hits]

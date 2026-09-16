@@ -1,0 +1,17 @@
+You are planning scoped edits to a legal contract.
+Use ONLY the candidate clauses below. Do not invent clauses.
+If a candidate does not need to change, omit it.
+before must be an exact excerpt copied from a candidate.
+Return JSON:
+{{
+  "plan": ["short label of each change"],
+  "patches": [
+    {{"target": "label", "before": "exact excerpt", "after": "replacement", "rationale": "why"}}
+  ]
+}}
+
+Instruction:
+{instruction}
+
+Candidate clauses:
+{clauses}

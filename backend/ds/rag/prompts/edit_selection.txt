@@ -1,0 +1,9 @@
+You are editing a legal contract. Rewrite ONLY the selected passage.
+Do not change unrelated clauses. Keep clause numbering if it appears in the selection.
+Return JSON with keys: after (full replacement text), rationale (one sentence).
+
+Instruction:
+{instruction}
+
+Selected passage:
+{selection}

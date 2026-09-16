@@ -3,6 +3,7 @@ import json
 import google.generativeai as genai
 
 from core.config.settings import settings
+from ds.rag.prompts import load_prompt
 
 from .base import LLMModel
 
@@ -15,8 +16,10 @@ class GeminiLLM(LLMModel):
         self.model = genai.GenerativeModel(model_name)  # type: ignore
 
     def generate(self, query: str, context: list[str]) -> str:
-        context_text = "\n".join(context)
-        prompt = f"Context:\n{context_text}\n\nQuestion:\n{query}"
+        prompt = load_prompt("qa").format(
+            context="\n".join(context),
+            query=query,
+        )
         response = self.model.generate_content(prompt)
         return response.text
 
