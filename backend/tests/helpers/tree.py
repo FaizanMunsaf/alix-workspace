@@ -1,4 +1,4 @@
-from core.parsers.ast import ASTNode
+from core.ast.parsers.ast import ASTNode
 
 
 def walk(nodes: list[ASTNode]):

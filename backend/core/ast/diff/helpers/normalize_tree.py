@@ -1,4 +1,4 @@
-from core.parsers.ast import ASTNode
+from core.ast.parsers.ast import ASTNode
 
 
 def normalize_tree(tree: list | dict | ASTNode | None) -> list:

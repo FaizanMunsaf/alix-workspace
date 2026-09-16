@@ -4,11 +4,11 @@ from io import BytesIO
 from docx import Document as DocxDocument
 from docx.table import Table
 
-from core.parsers.ast import ASTNode
-from core.parsers.classify_paragraph import classify_paragraph
-from core.parsers.parse_table import parse_table
-from core.parsers.push import push
-from core.utils.parsers.iter_blocks import iter_blocks
+from .ast import ASTNode
+from .classify_paragraph import classify_paragraph
+from .helpers.iter_blocks import iter_blocks
+from .parse_table import parse_table
+from .push import push
 
 logger = logging.getLogger(__name__)
 

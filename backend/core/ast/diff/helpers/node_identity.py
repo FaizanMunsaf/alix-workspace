@@ -1,5 +1,6 @@
-from core.parsers.ast import ASTNode
-from core.utils.diff.view_node import view_node
+from core.ast.parsers.ast import ASTNode
+
+from .view_node import view_node
 
 
 def node_identity(node: ASTNode | dict) -> str:

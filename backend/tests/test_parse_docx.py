@@ -1,4 +1,4 @@
-from core.parsers import parse_docx
+from core.ast.parsers import parse_docx
 
 from tests.helpers.docx import build_label_contract_docx, build_msa_docx
 from tests.helpers.tree import by_title, by_type, first_title, walk

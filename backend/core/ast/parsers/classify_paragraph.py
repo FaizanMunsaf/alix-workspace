@@ -2,11 +2,11 @@ import re
 
 from docx.text.paragraph import Paragraph
 
-from core.parsers.ast import ASTNode
-from core.utils.parsers.heading_level import heading_level
-from core.utils.parsers.is_bold_paragraph import is_bold_paragraph
-from core.utils.parsers.leading_bold_label import leading_bold_label
-from core.utils.parsers.truncate import truncate
+from .ast import ASTNode
+from .helpers.heading_level import heading_level
+from .helpers.is_bold_paragraph import is_bold_paragraph
+from .helpers.leading_bold_label import leading_bold_label
+from .helpers.truncate import truncate
 
 _ARTICLE_RE = re.compile(
     r"^(article|section|clause)\s+([\dA-Za-z.]+)(?:[:.\-]\s*|\s+)(.*)$",

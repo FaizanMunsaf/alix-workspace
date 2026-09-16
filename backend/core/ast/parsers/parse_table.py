@@ -1,7 +1,7 @@
 from docx.table import Table
 
-from core.parsers.ast import ASTNode
-from core.utils.parsers.truncate import truncate
+from .ast import ASTNode
+from .helpers.truncate import truncate
 
 
 def parse_table(table: Table, title: str | None = None) -> ASTNode | None:

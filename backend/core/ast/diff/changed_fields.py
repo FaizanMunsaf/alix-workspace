@@ -1,4 +1,4 @@
-from core.utils.diff.view_node import NodeView
+from .helpers.view_node import NodeView
 
 
 def changed_fields(old: NodeView, new: NodeView) -> list[str]:

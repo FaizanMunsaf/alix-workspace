@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from core.parsers.ast import ASTNode
+from core.ast.parsers.ast import ASTNode
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy.dialects import postgresql
 
-from core.parsers.ast import ASTNode
+from core.ast.parsers.ast import ASTNode
 from core.repositories.clause_embedding import clause_embedding_crud
 from api.backgrounds.documents import _clause_embed_input
 

@@ -1,5 +1,6 @@
-from core.utils.diff.view_node import NodeView
-from core.utils.parsers.truncate import truncate
+from core.ast.parsers.helpers.truncate import truncate
+
+from .view_node import NodeView
 
 
 def label_node(viewed: NodeView) -> str:

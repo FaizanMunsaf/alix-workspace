@@ -1,4 +1,4 @@
-from core.parsers.ast import ASTNode
+from .ast import ASTNode
 
 
 def push(stack: list[ASTNode], roots: list[ASTNode], node: ASTNode) -> None:

@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks
 
 from core.database import get_sync_db_session
-from core.parsers import ASTNode, parse_docx
+from core.ast.parsers import ASTNode, parse_docx
 from core.repositories import (
     clause_embedding_crud,
     document_ast_node_crud,

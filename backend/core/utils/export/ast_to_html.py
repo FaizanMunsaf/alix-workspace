@@ -1,4 +1,4 @@
-from core.parsers.ast import ASTNode
+from core.ast.parsers.ast import ASTNode
 from core.utils.export.node_to_html import node_to_html
 
 

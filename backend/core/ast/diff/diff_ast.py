@@ -1,12 +1,13 @@
-from core.diff.changed_fields import changed_fields
-from core.diff.match_nodes import match_nodes
-from core.diff.snapshot import snapshot
-from core.diff.types import ASTDiff, ChangeStatus, DiffChange
-from core.parsers.ast import ASTNode
-from core.utils.diff.format_path import format_path
-from core.utils.diff.label_node import label_node
-from core.utils.diff.normalize_tree import normalize_tree
-from core.utils.diff.view_node import view_node
+from core.ast.parsers.ast import ASTNode
+
+from .changed_fields import changed_fields
+from .helpers.format_path import format_path
+from .helpers.label_node import label_node
+from .helpers.normalize_tree import normalize_tree
+from .helpers.view_node import view_node
+from .match_nodes import match_nodes
+from .snapshot import snapshot
+from .types import ASTDiff, ChangeStatus, DiffChange
 
 
 def diff_ast(

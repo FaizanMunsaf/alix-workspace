@@ -1,5 +1,5 @@
-from core.diff import diff_ast
-from core.parsers import ASTNode, parse_docx
+from core.ast.diff import diff_ast
+from core.ast.parsers import ASTNode, parse_docx
 
 from tests.helpers.docx import build_msa_docx
 

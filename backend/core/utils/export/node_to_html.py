@@ -1,6 +1,6 @@
 import html
 
-from core.parsers.ast import ASTNode
+from core.ast.parsers.ast import ASTNode
 
 _HEADING_TAGS = {
     "section": "h1",

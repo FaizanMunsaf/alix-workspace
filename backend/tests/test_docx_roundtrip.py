@@ -1,4 +1,4 @@
-from core.parsers import parse_docx
+from core.ast.parsers import parse_docx
 from core.utils.export import ast_to_html, html_to_docx, html_to_text
 from tests.helpers.docx import build_msa_docx
 

@@ -1,8 +1,9 @@
-from core.parsers.ast import ASTNode
-from core.utils.diff.node_identity import node_identity
-from core.utils.diff.node_text import node_text
-from core.utils.diff.similarity import similarity
-from core.utils.diff.view_node import view_node
+from core.ast.parsers.ast import ASTNode
+
+from .helpers.node_identity import node_identity
+from .helpers.node_text import node_text
+from .helpers.similarity import similarity
+from .helpers.view_node import view_node
 
 _FUZZY_THRESHOLD = 0.55
 

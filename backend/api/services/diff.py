@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 
 from core.database import get_sync_db_session
-from core.diff import diff_ast
+from core.ast.diff import diff_ast
 from core.repositories import document_version_crud
 from core.schemas.diff import ASTDiffResponse
 
