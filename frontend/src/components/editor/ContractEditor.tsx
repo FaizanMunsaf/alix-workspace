@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Table from "@tiptap/extension-table";
@@ -41,6 +41,7 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
     ref,
   ) {
     const appliedKey = useRef("");
+    const [, setToolbarTick] = useState(0);
     const editor = useEditor({
       extensions: [
         StarterKit,
@@ -55,6 +56,7 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
         attributes: { class: "tiptap" },
       },
       onUpdate: () => onDirty(),
+      onTransaction: () => setToolbarTick((value) => value + 1),
       onSelectionUpdate: ({ editor: current }) => {
         const { from, to, empty } = current.state.selection;
         if (empty) {
@@ -127,6 +129,20 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
       <section className="editor-page">
         {editor && (
           <div className="editor-toolbar">
+            <button
+              type="button"
+              disabled={!editor.can().undo()}
+              onClick={() => editor.chain().focus().undo().run()}
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              disabled={!editor.can().redo()}
+              onClick={() => editor.chain().focus().redo().run()}
+            >
+              Redo
+            </button>
             <button
               type="button"
               className={editor.isActive("bold") ? "active" : ""}

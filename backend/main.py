@@ -6,11 +6,12 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from admin.admin import init_admin
-from api.swagger import router as swagger_router
 from api.documents import router as documents_router
 from api.edits import router as edits_router
 from api.health_test import router as health_router
+from api.history import router as history_router
 from api.qa import router as qa_router
+from api.swagger import router as swagger_router
 from core.config.settings import settings
 from core.database import init_db
 
@@ -50,6 +51,12 @@ app.add_middleware(
 app.include_router(swagger_router)
 
 api_v1 = APIRouter(prefix="/api/v1")
-for router in (health_router, documents_router, edits_router, qa_router):
+for router in (
+    health_router,
+    documents_router,
+    edits_router,
+    history_router,
+    qa_router,
+):
     api_v1.include_router(router)
 app.include_router(api_v1)

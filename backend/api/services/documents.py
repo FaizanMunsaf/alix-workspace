@@ -1,14 +1,21 @@
 import re
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import BackgroundTasks, HTTPException, status
 
 from api.backgrounds import enqueue_document_parse
+from core.ast.parsers import parse_docx
 from core.config.settings import BACKEND_DIR
 from core.database import get_sync_db_session
 from core.models.document_version import DocumentVersion
-from core.repositories import document_crud, document_version_crud
+from core.repositories import (
+    document_change_crud,
+    document_crud,
+    document_version_crud,
+)
 from core.schemas.document import (
     CreateDocument,
     DocumentDetailResponse,
@@ -18,8 +25,8 @@ from core.schemas.document import (
 from core.schemas.document_version import (
     CreateDocumentVersion,
     DocumentVersionResponse,
-    UpdateDocumentVersion,
 )
+from core.schemas.history import CreateDocumentChange, UpdateDocumentChange
 from core.utils.export import editor_html, html_to_docx, html_to_text
 
 UPLOAD_DIR = BACKEND_DIR / "uploads"
@@ -149,6 +156,66 @@ def save_document_content(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Document content is empty.",
         )
+    with get_sync_db_session() as db:
+        document = document_crud.get(db, document_id)
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document was not found.",
+            )
+        versions = document_version_crud.list_by_document_id(db, document_id)
+        if not versions:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document has no versions to save.",
+            )
+        if editor_html(versions[-1].ast_json).strip() == markup:
+            return _document_detail(db, document_id)
+    return create_checkpoint(
+        document_id,
+        html=markup,
+        actor="user",
+        instruction="Manual save",
+        target="Document",
+    )
+
+
+def restore_version(document_id: str, version_id: str) -> DocumentDetailResponse:
+    with get_sync_db_session() as db:
+        versions = document_version_crud.list_by_document_id(db, document_id)
+        source = _pick_version(versions, version_id)
+        html = editor_html(source.ast_json)
+        if not html.strip() and source.raw_text:
+            html = f"<p>{source.raw_text}</p>"
+        number = source.version_number
+    return create_checkpoint(
+        document_id,
+        html=html,
+        actor="user",
+        instruction=f"Restore version {number}",
+        target=f"Version {number}",
+        after=html,
+    )
+
+
+def create_checkpoint(
+    document_id: str,
+    *,
+    html: str,
+    actor: Literal["user", "ai"],
+    instruction: str | None,
+    target: str,
+    before: str | None = None,
+    after: str | None = None,
+    rationale: str | None = None,
+    change_id: str | None = None,
+) -> DocumentDetailResponse:
+    markup = html.strip()
+    if not markup:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document content is empty.",
+        )
 
     with get_sync_db_session() as db:
         document = document_crud.get(db, document_id)
@@ -163,23 +230,82 @@ def save_document_content(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Document has no versions to save.",
             )
-        version = _pick_version(versions, version_id)
-        ast_json = dict(version.ast_json or {})
-        ast_json["html"] = markup
+        latest = versions[-1]
+        if change_id:
+            change = document_change_crud.get(db, change_id)
+            if change is None or str(change.document_id) != str(document.id):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Change was not found.",
+                )
+            if change.decision != "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Change is no longer pending.",
+                )
+        previous_html = editor_html(latest.ast_json)
+        new_number = latest.version_number + 1
         dest_dir = UPLOAD_DIR / str(document.id)
         dest_dir.mkdir(parents=True, exist_ok=True)
-        working_path = dest_dir / "working.docx"
-        working_path.write_bytes(html_to_docx(markup))
-        document_version_crud.update(
+        file_path = dest_dir / f"v{new_number}.docx"
+        docx_bytes = html_to_docx(markup)
+        file_path.write_bytes(docx_bytes)
+        ast_json, raw_text = _snapshot_html(
+            markup, docx_bytes, fallback=dict(latest.ast_json or {})
+        )
+        version = document_version_crud.create(
             db,
-            str(version.id),
-            UpdateDocumentVersion(
-                raw_text=html_to_text(markup) or version.raw_text,
-                file_path=str(working_path),
+            CreateDocumentVersion(
+                document_id=document.id,
+                version_number=new_number,
+                raw_text=raw_text,
+                file_path=str(file_path),
                 ast_json=ast_json,
+                processing_status="completed",
             ),
         )
+        now = datetime.now(timezone.utc)
+        if change_id:
+            document_change_crud.update(
+                db,
+                change_id,
+                UpdateDocumentChange(
+                    result_version_id=version.id,
+                    decision="accepted",
+                    decided_at=now,
+                ),
+            )
+        else:
+            document_change_crud.create(
+                db,
+                CreateDocumentChange(
+                    document_id=document.id,
+                    version_id=latest.id,
+                    result_version_id=version.id,
+                    actor=actor,
+                    instruction=instruction,
+                    target=target,
+                    before=before if before is not None else previous_html,
+                    after=after if after is not None else markup,
+                    rationale=rationale,
+                    decision="accepted",
+                    decided_at=now,
+                ),
+            )
         return _document_detail(db, document_id)
+
+
+def _snapshot_html(markup: str, data: bytes, *, fallback: dict) -> tuple[dict, str]:
+    try:
+        raw_text, tree = parse_docx(data)
+        return (
+            {"nodes": [node.to_dict() for node in tree], "html": markup},
+            raw_text or html_to_text(markup),
+        )
+    except Exception:  # noqa: BLE001
+        snapshot = dict(fallback)
+        snapshot["html"] = markup
+        return snapshot, html_to_text(markup)
 
 
 def export_document_docx(

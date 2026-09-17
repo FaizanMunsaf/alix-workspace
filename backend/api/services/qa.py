@@ -3,7 +3,12 @@ import uuid
 from fastapi import HTTPException
 
 from core.database import get_sync_db_session
-from core.repositories import clause_embedding_crud
+from core.repositories import (
+    clause_embedding_crud,
+    document_crud,
+    document_message_crud,
+)
+from core.schemas.history import CreateDocumentMessage
 from ds.rag.embeddings import get_embedding_model
 from ds.rag.llms import get_llm
 
@@ -31,6 +36,9 @@ def answer_question(*, query: str, document_id: str | None, top_k: int) -> dict:
         )
     answer = get_llm().generate(query, [hit.content for hit in hits])
 
+    if document_uuid is not None:
+        _store_turn(document_uuid, query=query.strip(), answer=answer)
+
     return {
         "query": query,
         "answer": answer,
@@ -48,3 +56,25 @@ def answer_question(*, query: str, document_id: str | None, top_k: int) -> dict:
             for hit in hits
         ],
     }
+
+
+def _store_turn(document_id: uuid.UUID, *, query: str, answer: str) -> None:
+    with get_sync_db_session() as db:
+        if document_crud.get(db, str(document_id)) is None:
+            return
+        document_message_crud.create(
+            db,
+            CreateDocumentMessage(
+                document_id=document_id,
+                role="user",
+                content=query,
+            ),
+        )
+        document_message_crud.create(
+            db,
+            CreateDocumentMessage(
+                document_id=document_id,
+                role="assistant",
+                content=answer,
+            ),
+        )

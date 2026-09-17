@@ -9,6 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from core.database import Base
 
 if TYPE_CHECKING:
+    from core.models.document_change import DocumentChange
+    from core.models.document_message import DocumentMessage
     from core.models.document_version import DocumentVersion
 
 
@@ -36,6 +38,14 @@ class Document(Base):
 
     # Relationships
     versions: Mapped[List["DocumentVersion"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    changes: Mapped[List["DocumentChange"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    messages: Mapped[List["DocumentMessage"]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
     )

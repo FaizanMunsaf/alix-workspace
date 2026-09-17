@@ -30,4 +30,5 @@ def apply_document_edit(document_id: str, body: ApplyEditRequest):
         after=body.after,
         html=body.html,
         version_id=str(body.version_id) if body.version_id else None,
+        change_id=str(body.change_id) if body.change_id else None,
     )

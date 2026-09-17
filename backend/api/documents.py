@@ -6,6 +6,7 @@ from api.services.documents import (
     export_document_docx,
     get_document,
     list_documents,
+    restore_version,
     save_document_content,
     upload_document,
 )
@@ -15,6 +16,7 @@ from core.schemas.document import (
     DocumentListItem,
     SaveDocumentContent,
 )
+from core.schemas.history import RestoreVersionRequest
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -44,6 +46,11 @@ def save_content(document_id: str, body: SaveDocumentContent):
         html=body.html,
         version_id=str(body.version_id) if body.version_id else None,
     )
+
+
+@router.post("/{document_id}/restore", response_model=DocumentDetailResponse)
+def restore_document_version(document_id: str, body: RestoreVersionRequest):
+    return restore_version(document_id, str(body.version_id))
 
 
 @router.get("/{document_id}", response_model=DocumentDetailResponse)

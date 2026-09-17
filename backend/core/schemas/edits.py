@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from core.schemas.document_version import DocumentVersionResponse
+
 
 class ProposeEditRequest(BaseModel):
     instruction: str = Field(..., min_length=1)
@@ -13,10 +15,11 @@ class ProposeEditRequest(BaseModel):
 
 
 class ApplyEditRequest(BaseModel):
-    before: str = Field(..., min_length=1)
-    after: str
+    before: str = ""
+    after: str = ""
     html: str | None = None
     version_id: uuid.UUID | None = None
+    change_id: uuid.UUID | None = None
 
 
 class EditPatch(BaseModel):
@@ -41,3 +44,5 @@ class ApplyEditResponse(BaseModel):
     html: str
     before: str
     after: str
+    active_version_id: uuid.UUID | None = None
+    versions: list[DocumentVersionResponse] = Field(default_factory=list)

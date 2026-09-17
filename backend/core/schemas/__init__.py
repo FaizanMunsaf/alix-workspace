@@ -1,3 +1,10 @@
+from .clause_embedding import (
+    ClauseEmbeddingResponse,
+    ClauseEmbedInput,
+    ClauseSearchHit,
+    CreateClauseEmbedding,
+)
+from .diff import ASTDiffResponse, DiffChangeResponse, DiffRequest
 from .document import (
     CreateDocument,
     DocumentDetailResponse,
@@ -17,13 +24,6 @@ from .document_version import (
     DocumentVersionResponse,
     UpdateDocumentVersion,
 )
-from .clause_embedding import (
-    ClauseEmbedInput,
-    ClauseEmbeddingResponse,
-    ClauseSearchHit,
-    CreateClauseEmbedding,
-)
-from .diff import ASTDiffResponse, DiffChangeResponse, DiffRequest
 from .edits import (
     ApplyEditRequest,
     ApplyEditResponse,
@@ -31,33 +31,49 @@ from .edits import (
     ProposeEditRequest,
     ProposeEditResponse,
 )
+from .history import (
+    CreateDocumentChange,
+    CreateDocumentMessage,
+    DecideChangeRequest,
+    DocumentChangeResponse,
+    DocumentMessageResponse,
+    RestoreVersionRequest,
+    UpdateDocumentChange,
+)
 from .qa import QARequest
 
 __all__ = [
     "ASTDiffResponse",
+    "ApplyEditRequest",
+    "ApplyEditResponse",
     "ClauseEmbedInput",
     "ClauseEmbeddingResponse",
     "ClauseSearchHit",
     "CreateClauseEmbedding",
     "CreateDocument",
     "CreateDocumentASTNode",
+    "CreateDocumentChange",
+    "CreateDocumentMessage",
     "CreateDocumentVersion",
+    "DecideChangeRequest",
     "DiffChangeResponse",
     "DiffRequest",
-    "ApplyEditRequest",
-    "ApplyEditResponse",
+    "DocumentASTNodeResponse",
+    "DocumentChangeResponse",
+    "DocumentDetailResponse",
+    "DocumentListItem",
+    "DocumentMessageResponse",
+    "DocumentResponse",
+    "DocumentUploadResponse",
+    "DocumentVersionResponse",
     "EditPatch",
     "ProposeEditRequest",
     "ProposeEditResponse",
-    "DocumentDetailResponse",
-    "DocumentListItem",
-    "DocumentASTNodeResponse",
-    "DocumentResponse",
-    "DocumentUploadResponse",
-    "SaveDocumentContent",
-    "DocumentVersionResponse",
     "QARequest",
+    "RestoreVersionRequest",
+    "SaveDocumentContent",
     "UpdateDocument",
     "UpdateDocumentASTNode",
+    "UpdateDocumentChange",
     "UpdateDocumentVersion",
 ]

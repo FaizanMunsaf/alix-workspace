@@ -3,14 +3,19 @@ import uuid
 
 from fastapi import HTTPException, status
 
-from api.services.documents import get_document, save_document_content
+from api.services.documents import create_checkpoint, get_document
 from core.database import get_sync_db_session
-from core.repositories import clause_embedding_crud
+from core.repositories import (
+    clause_embedding_crud,
+    document_change_crud,
+    document_version_crud,
+)
 from core.schemas.edits import (
     ApplyEditResponse,
     EditPatch,
     ProposeEditResponse,
 )
+from core.schemas.history import CreateDocumentChange
 from core.utils.edits import PatchConflict, apply_text_patch, parse_llm_json
 from ds.rag.embeddings import get_embedding_model
 from ds.rag.llms import get_llm
@@ -34,41 +39,122 @@ def propose_edits(
     get_document(document_id)
 
     if scope == "selection":
-        return _propose_selection(
+        result = _propose_selection(
             document_id, instruction=text, selection=selection_text
         )
-    return _propose_document(document_id, instruction=text)
+    else:
+        result = _propose_document(document_id, instruction=text)
+    result.patches = _store_pending_patches(
+        document_id, instruction=result.instruction, patches=result.patches
+    )
+    return result
 
 
 def apply_edit(
     document_id: str,
     *,
-    before: str,
-    after: str,
     html: str | None,
-    version_id: str | None,
+    version_id: str | None = None,
+    change_id: str | None = None,
+    before: str | None = None,
+    after: str | None = None,
 ) -> ApplyEditResponse:
     detail = get_document(document_id)
+    instruction = "AI edit"
+    target = "Clause"
+    rationale = None
+    actor: str = "ai"
+
+    if change_id:
+        with get_sync_db_session() as db:
+            change = document_change_crud.get(db, change_id)
+            if change is None or str(change.document_id) != document_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Change was not found.",
+                )
+            if change.decision != "pending":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Change is no longer pending.",
+                )
+            before = change.before
+            after = change.after
+            instruction = change.instruction or instruction
+            target = change.target
+            rationale = change.rationale
+            actor = change.actor if change.actor in {"user", "ai"} else "ai"
+    elif not (before or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="before is required when change_id is not provided.",
+        )
+
     source = html if html is not None else detail.html or ""
     try:
-        updated = apply_text_patch(source, before, after)
+        updated = apply_text_patch(source, before or "", after or "")
     except PatchConflict as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
-    saved = save_document_content(
+
+    saved = create_checkpoint(
         document_id,
         html=updated,
-        version_id=version_id
-        or (str(detail.active_version_id) if detail.active_version_id else None),
+        actor=actor,  # type: ignore[arg-type]
+        instruction=instruction,
+        target=target,
+        before=before or "",
+        after=after or "",
+        rationale=rationale,
+        change_id=change_id,
     )
     return ApplyEditResponse(
         document_id=saved.document_id,
         html=saved.html or updated,
-        before=before,
-        after=after,
+        before=before or "",
+        after=after or "",
+        active_version_id=saved.active_version_id,
+        versions=saved.versions,
     )
+
+
+def _store_pending_patches(
+    document_id: str, instruction: str, patches: list[EditPatch]
+) -> list[EditPatch]:
+    if not patches:
+        return patches
+    with get_sync_db_session() as db:
+        versions = document_version_crud.list_by_document_id(db, document_id)
+        latest = versions[-1] if versions else None
+        stored: list[EditPatch] = []
+        for patch in patches:
+            row = document_change_crud.create(
+                db,
+                CreateDocumentChange(
+                    document_id=uuid.UUID(document_id),
+                    version_id=latest.id if latest else None,
+                    actor="ai",
+                    instruction=instruction,
+                    target=patch.target,
+                    before=patch.before,
+                    after=patch.after,
+                    rationale=patch.rationale,
+                    decision="pending",
+                ),
+            )
+            stored.append(
+                EditPatch(
+                    id=str(row.id),
+                    target=row.target,
+                    before=row.before,
+                    after=row.after,
+                    rationale=row.rationale or "",
+                    status="pending",
+                )
+            )
+        return stored
 
 
 def _propose_selection(

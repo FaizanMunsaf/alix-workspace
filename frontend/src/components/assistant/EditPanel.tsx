@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import type { DocumentChange } from "../../api/history";
 import {
   proposeEdits,
   type EditPatch,
@@ -19,15 +20,71 @@ type Props = {
   selection: EditorSelection | null;
   getHtml: () => string;
   applyingId: string | null;
+  pending: DocumentChange[];
   onAccept: (patch: EditPatch) => Promise<void>;
+  onReject: (patchId: string) => Promise<void>;
+  onProposed: () => Promise<void>;
 };
 
-export function EditPanel({ documentId, selection, getHtml, applyingId, onAccept }: Props) {
+function patchesFromPending(documentId: string, pending: DocumentChange[]): ProposeEditResponse {
+  return {
+    document_id: documentId,
+    scope: "selection",
+    instruction: pending[0]?.instruction ?? "",
+    plan: [],
+    patches: pending.map((change) => ({
+      id: change.id,
+      target: change.target,
+      before: change.before,
+      after: change.after,
+      rationale: change.rationale ?? "",
+      status: "pending",
+    })),
+  };
+}
+
+export function EditPanel({
+  documentId,
+  selection,
+  getHtml,
+  applyingId,
+  pending,
+  onAccept,
+  onReject,
+  onProposed,
+}: Props) {
   const [scope, setScope] = useState<EditScope>("selection");
   const [instruction, setInstruction] = useState("");
   const [proposal, setProposal] = useState<ProposeEditResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
+
+  const pendingSnapshot = JSON.stringify(
+    pending.map((change) => ({
+      id: change.id,
+      instruction: change.instruction,
+      target: change.target,
+      before: change.before,
+      after: change.after,
+      rationale: change.rationale,
+    })),
+  );
+
+  useEffect(() => {
+    if (!documentId) {
+      setProposal(null);
+      return;
+    }
+    const items = JSON.parse(pendingSnapshot) as DocumentChange[];
+    setProposal((current) => {
+      const pendingIds = items.map((item) => item.id).join(",");
+      const currentIds = current?.patches.map((patch) => patch.id).join(",") ?? "";
+      if (current && pendingIds && pendingIds === currentIds) {
+        return current;
+      }
+      return items.length ? patchesFromPending(documentId, items) : null;
+    });
+  }, [documentId, pendingSnapshot]);
 
   async function runPropose(prompt: string) {
     if (!documentId || !prompt.trim()) return;
@@ -41,6 +98,7 @@ export function EditPanel({ documentId, selection, getHtml, applyingId, onAccept
         scope,
       });
       setProposal(result);
+      await onProposed();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not propose an edit.");
     } finally {
@@ -53,19 +111,19 @@ export function EditPanel({ documentId, selection, getHtml, applyingId, onAccept
     await runPropose(instruction);
   }
 
-  function rejectPatch(patchId: string) {
-    setProposal((current) =>
-      current
-        ? { ...current, patches: current.patches.filter((patch) => patch.id !== patchId) }
-        : current,
-    );
+  async function rejectPatch(patchId: string) {
+    setError(null);
+    try {
+      await onReject(patchId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reject the edit.");
+    }
   }
 
   async function acceptPatch(patch: EditPatch) {
     setError(null);
     try {
       await onAccept(patch);
-      rejectPatch(patch.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not apply the edit.");
     }
@@ -159,7 +217,7 @@ export function EditPanel({ documentId, selection, getHtml, applyingId, onAccept
                 <button
                   type="button"
                   disabled={Boolean(applyingId)}
-                  onClick={() => rejectPatch(patch.id)}
+                  onClick={() => void rejectPatch(patch.id)}
                 >
                   Reject
                 </button>

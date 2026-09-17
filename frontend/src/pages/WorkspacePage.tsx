@@ -15,7 +15,16 @@ import {
   type DocumentDetail,
   type DocumentListItem,
 } from "../api/documents";
-import { applyEdit, type EditPatch } from "../api/edits";
+import {
+  acceptChange,
+  listChanges,
+  listMessages,
+  rejectChange,
+  restoreVersion,
+  type DocumentChange,
+  type DocumentMessage,
+} from "../api/history";
+import { type EditPatch } from "../api/edits";
 
 export function WorkspacePage() {
   const editorRef = useRef<ContractEditorHandle>(null);
@@ -23,12 +32,15 @@ export function WorkspacePage() {
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DocumentDetail | null>(null);
+  const [changes, setChanges] = useState<DocumentChange[]>([]);
+  const [messages, setMessages] = useState<DocumentMessage[]>([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [selection, setSelection] = useState<EditorSelection | null>(null);
   const [contentNonce, setContentNonce] = useState(0);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const refreshList = useCallback(async () => {
     try {
@@ -41,14 +53,32 @@ export function WorkspacePage() {
     }
   }, []);
 
-  const openDocument = useCallback(async (documentId: string) => {
-    const detail = await getDocument(documentId);
-    setSelected(detail);
-    setDirty(false);
-    setSelection(null);
-    setContentNonce((value) => value + 1);
-    return detail;
+  const refreshHistory = useCallback(async (documentId: string) => {
+    const [nextChanges, nextMessages] = await Promise.all([
+      listChanges(documentId),
+      listMessages(documentId),
+    ]);
+    setChanges(nextChanges);
+    setMessages(nextMessages);
   }, []);
+
+  const openDocument = useCallback(
+    async (documentId: string) => {
+      const detail = await getDocument(documentId);
+      setSelected(detail);
+      setChanges([]);
+      setMessages([]);
+      setDirty(false);
+      setSelection(null);
+      setContentNonce((value) => value + 1);
+      await refreshHistory(documentId).catch(() => {
+        setChanges([]);
+        setMessages([]);
+      });
+      return detail;
+    },
+    [refreshHistory],
+  );
 
   useEffect(() => {
     void refreshList();
@@ -91,6 +121,7 @@ export function WorkspacePage() {
       setSelected(saved);
       setDirty(false);
       await refreshList();
+      await refreshHistory(saved.document_id);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -117,18 +148,43 @@ export function WorkspacePage() {
     setActionError(null);
     try {
       const html = editorRef.current?.getHTML() || selected.html || "";
-      const result = await applyEdit(selected.document_id, {
-        before: patch.before,
-        after: patch.after,
-        html,
-        version_id: selected.active_version_id,
+      const result = await acceptChange(selected.document_id, patch.id, html);
+      setSelected({
+        ...selected,
+        html: result.html,
+        active_version_id: result.active_version_id,
+        versions: result.versions.length ? result.versions : selected.versions,
       });
-      setSelected({ ...selected, html: result.html });
       setContentNonce((value) => value + 1);
       setDirty(false);
       await refreshList();
+      await refreshHistory(selected.document_id);
     } finally {
       setApplyingId(null);
+    }
+  }
+
+  async function handleRejectEdit(patchId: string) {
+    if (!selected) throw new Error("Open a document first.");
+    await rejectChange(selected.document_id, patchId);
+    await refreshHistory(selected.document_id);
+  }
+
+  async function handleRestore(versionId: string) {
+    if (!selected) return;
+    setRestoringId(versionId);
+    setActionError(null);
+    try {
+      const saved = await restoreVersion(selected.document_id, versionId);
+      setSelected(saved);
+      setContentNonce((value) => value + 1);
+      setDirty(false);
+      await refreshList();
+      await refreshHistory(saved.document_id);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Restore failed.");
+    } finally {
+      setRestoringId(null);
     }
   }
 
@@ -142,6 +198,9 @@ export function WorkspacePage() {
           <p className="header-sub">
             {selected ? selected.title : "Contract workspace"}
             {dirty ? " · unsaved" : ""}
+            {selected?.versions.length
+              ? ` · v${selected.versions.at(-1)?.version_number ?? 1}`
+              : ""}
           </p>
         </div>
         <div className="header-actions">
@@ -183,10 +242,18 @@ export function WorkspacePage() {
         <AssistantPanel
           documentId={selected?.document_id ?? null}
           versions={selected?.versions ?? []}
+          changes={changes}
+          messages={messages}
           selection={selection}
           getHtml={() => editorRef.current?.getHTML() || selected?.html || ""}
           applyingId={applyingId}
+          restoringId={restoringId}
           onAcceptEdit={handleAcceptEdit}
+          onRejectEdit={handleRejectEdit}
+          onRestore={handleRestore}
+          onHistoryRefresh={async () => {
+            if (selected) await refreshHistory(selected.document_id);
+          }}
         />
       </main>
     </div>
