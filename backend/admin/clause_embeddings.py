@@ -6,7 +6,7 @@ from core.models.clause_embeddings import ClauseEmbedding
 class ClauseEmbeddingAdmin(ModelView, model=ClauseEmbedding):
     name = "Clause Embedding"
     name_plural = "Clause Embeddings"
-    icon = "fa-solid fa-vector-square"
+    icon = "ti ti-vector"
 
     column_list = [
         ClauseEmbedding.id,

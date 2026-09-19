@@ -6,7 +6,7 @@ from core.models.document_version import DocumentVersion
 class DocumentVersionAdmin(ModelView, model=DocumentVersion):
     name = "Document Version"
     name_plural = "Document Versions"
-    icon = "fa-solid fa-code-branch"
+    icon = "ti ti-versions"
 
     column_list = [
         DocumentVersion.id,

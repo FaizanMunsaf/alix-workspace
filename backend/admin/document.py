@@ -6,7 +6,7 @@ from core.models.documents import Document
 class DocumentAdmin(ModelView, model=Document):
     name = "Document"
     name_plural = "Documents"
-    icon = "fa-solid fa-file-lines"
+    icon = "ti ti-file-text"
 
     column_list = [
         Document.id,

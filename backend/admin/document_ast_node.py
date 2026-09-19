@@ -6,7 +6,7 @@ from core.models.document_ast_node import DocumentASTNode
 class DocumentASTNodeAdmin(ModelView, model=DocumentASTNode):
     name = "AST Node"
     name_plural = "AST Nodes"
-    icon = "fa-solid fa-sitemap"
+    icon = "ti ti-binary-tree"
 
     column_list = [
         DocumentASTNode.id,

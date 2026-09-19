@@ -14,7 +14,7 @@ def init_admin(app: FastAPI) -> None:
     admin = Admin(
         app,
         engine,
-        templates_dir="admin/static",
+        title=settings.APP_NAME,
         authentication_backend=AdminAuth(
             secret_key=settings.SECRET_KEY,
             username=settings.ADMIN_USERNAME,
