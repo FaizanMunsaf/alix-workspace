@@ -4,8 +4,8 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks
 
-from core.database import get_sync_db_session
 from core.ast.parsers import ASTNode, parse_docx
+from core.database import get_sync_db_session
 from core.repositories import (
     clause_embedding_crud,
     document_ast_node_crud,
@@ -21,7 +21,7 @@ from ds.rag.embeddings.embed_clauses import embed_clauses
 
 logger = logging.getLogger(__name__)
 
-_SKIP_EMBED_TYPES = {"table_cell"}
+_SKIP_EMBED_TYPES = {"table_cell", "image"}
 
 
 def enqueue_document_parse(
@@ -52,12 +52,14 @@ def parse_and_ingest_document(
 ) -> None:
     try:
         _set_processing_status(document_id, version_id, "processing", "processing")
-        raw_text, tree = parse_docx(Path(file_path).read_bytes())
-        if not raw_text.strip():
+        media_dir = Path(file_path).resolve().parent / "media"
+        raw_text, tree = parse_docx(
+            Path(file_path).read_bytes(),
+            document_id=document_id,
+            media_dir=media_dir,
+        )
+        if not raw_text.strip() and not any(node.node_type == "image" for node in tree):
             raise ValueError("No text could be extracted from the .docx file.")
-
-        version_uuid = uuid.UUID(version_id)
-        ast_rows, embed_inputs = _flatten_ast(tree, version_id=version_uuid)
 
         with get_sync_db_session() as db:
             document = document_crud.get(db, document_id)
@@ -65,8 +67,6 @@ def parse_and_ingest_document(
             if document is None or version is None:
                 logger.error("Document or version missing after parse: %s", document_id)
                 return
-            if ast_rows:
-                document_ast_node_crud.create_many(db, ast_rows)
             document_version_crud.update(
                 db,
                 version_id,
@@ -79,11 +79,13 @@ def parse_and_ingest_document(
                 ),
             )
 
-        clause_rows = embed_clauses(embed_inputs)
+        ast_count, embed_count = ingest_parsed_version(
+            document_id=document_id,
+            version_id=version_id,
+            tree=tree,
+        )
 
         with get_sync_db_session() as db:
-            if clause_rows:
-                clause_embedding_crud.create_many(db, clause_rows)
             document_crud.update(db, document_id, UpdateDocument(status="ingested"))
             document_version_crud.update(
                 db,
@@ -95,12 +97,44 @@ def parse_and_ingest_document(
             "Parsed document %s (%s) into %s AST nodes and %s clause embeddings",
             document_id,
             filename or title,
-            len(ast_rows),
-            len(clause_rows),
+            ast_count,
+            embed_count,
         )
     except Exception:
         logger.exception("Failed to parse document %s", document_id)
         _set_processing_status(document_id, version_id, "failed", "failed")
+
+
+def ingest_parsed_version(
+    *,
+    document_id: str,
+    version_id: str,
+    tree: list[ASTNode],
+) -> tuple[int, int]:
+    """Persist AST nodes and clause embeddings for an existing version."""
+    version_uuid = uuid.UUID(version_id)
+    ast_rows, embed_inputs = _flatten_ast(tree, version_id=version_uuid)
+
+    with get_sync_db_session() as db:
+        version = document_version_crud.get(db, version_id)
+        if version is None or str(version.document_id) != document_id:
+            raise ValueError(f"Version {version_id} was not found for document.")
+        if ast_rows:
+            document_ast_node_crud.create_many(db, ast_rows)
+
+    clause_rows = embed_clauses(embed_inputs)
+    with get_sync_db_session() as db:
+        if clause_rows:
+            clause_embedding_crud.create_many(db, clause_rows)
+
+    logger.info(
+        "Indexed version %s for document %s (%s nodes, %s embeddings)",
+        version_id,
+        document_id,
+        len(ast_rows),
+        len(clause_rows),
+    )
+    return len(ast_rows), len(clause_rows)
 
 
 def _set_processing_status(

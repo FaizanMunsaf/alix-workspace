@@ -1,8 +1,15 @@
 from html.parser import HTMLParser
 from io import BytesIO
+from pathlib import Path
 
 from docx import Document
+from docx.shared import Inches
 from docx.text.paragraph import Paragraph
+
+from core.ast.parsers.helpers.extract_images import resolve_image_bytes
+from core.config.settings import BACKEND_DIR
+
+_DEFAULT_UPLOADS = BACKEND_DIR / "uploads"
 
 
 class _Run:
@@ -13,8 +20,9 @@ class _Run:
 
 
 class _HtmlToDocx(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, uploads_dir: Path) -> None:
         super().__init__(convert_charrefs=True)
+        self.uploads_dir = uploads_dir
         self.document = Document()
         self.bold = 0
         self.italic = 0
@@ -34,6 +42,8 @@ class _HtmlToDocx(HTMLParser):
             self.italic += 1
         elif tag == "br":
             self._append_text("\n")
+        elif tag == "img":
+            self._add_image(dict(attrs).get("src") or "")
         elif tag in {"ul", "ol"}:
             self.list_kind = tag
         elif tag == "table":
@@ -85,6 +95,17 @@ class _HtmlToDocx(HTMLParser):
             return
         self.runs.append(_Run(data, bold=self.bold > 0, italic=self.italic > 0))
 
+    def _add_image(self, src: str) -> None:
+        if self.runs:
+            self._flush_block("p")
+        blob = resolve_image_bytes(src, uploads_dir=self.uploads_dir)
+        if blob is None:
+            return
+        try:
+            self.document.add_picture(BytesIO(blob), width=Inches(5.5))
+        except (OSError, ValueError, TypeError):
+            return
+
     def _flush_block(self, tag: str) -> None:
         runs = self.runs
         self.runs = []
@@ -129,8 +150,8 @@ def _apply_runs(paragraph: Paragraph, runs: list[_Run]) -> None:
         docx_run.italic = run.italic
 
 
-def html_to_docx(markup: str) -> bytes:
-    parser = _HtmlToDocx()
+def html_to_docx(markup: str, *, uploads_dir: Path | None = None) -> bytes:
+    parser = _HtmlToDocx(uploads_dir=uploads_dir or _DEFAULT_UPLOADS)
     parser.feed(markup or "")
     parser.close()
     if parser.runs:

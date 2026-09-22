@@ -12,4 +12,5 @@ def qa(body: QARequest):
         query=body.query,
         document_id=body.document_id,
         top_k=body.top_k,
+        selection=body.selection,
     )

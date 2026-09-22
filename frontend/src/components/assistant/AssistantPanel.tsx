@@ -23,6 +23,7 @@ type Props = {
   onRejectEdit: (patchId: string) => Promise<void>;
   onRestore: (versionId: string) => Promise<void>;
   onHistoryRefresh: () => Promise<void>;
+  onJumpToSource: (text: string) => boolean;
 };
 
 export function AssistantPanel({
@@ -38,6 +39,7 @@ export function AssistantPanel({
   onRejectEdit,
   onRestore,
   onHistoryRefresh,
+  onJumpToSource,
 }: Props) {
   const [tab, setTab] = useState<Tab>("edit");
 
@@ -75,7 +77,14 @@ export function AssistantPanel({
         />
       )}
       {tab === "ask" && (
-        <AskPanel documentId={documentId} messages={messages} onAsked={onHistoryRefresh} />
+        <AskPanel
+          documentId={documentId}
+          selection={selection}
+          versions={versions}
+          messages={messages}
+          onAsked={onHistoryRefresh}
+          onJumpToSource={onJumpToSource}
+        />
       )}
       {tab === "diff" && (
         <DiffPanel

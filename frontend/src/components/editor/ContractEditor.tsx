@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
 import Table from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
@@ -15,6 +16,7 @@ export type EditorSelection = {
 export type ContractEditorHandle = {
   getHTML: () => string;
   getSelection: () => EditorSelection | null;
+  jumpToText: (text: string) => boolean;
 };
 
 type Props = {
@@ -45,6 +47,10 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
     const editor = useEditor({
       extensions: [
         StarterKit,
+        Image.configure({
+          inline: false,
+          allowBase64: true,
+        }),
         Table.configure({ resizable: false }),
         TableRow,
         TableHeader,
@@ -82,6 +88,18 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
           to,
           text: editor.state.doc.textBetween(from, to, " "),
         };
+      },
+      jumpToText: (text: string) => {
+        if (!editor) return false;
+        const range = findTextRange(editor.state.doc, text);
+        if (!range) return false;
+        editor.chain().focus().setTextSelection(range).scrollIntoView().run();
+        onSelectionChange({
+          from: range.from,
+          to: range.to,
+          text: editor.state.doc.textBetween(range.from, range.to, " "),
+        });
+        return true;
       },
     }));
 
@@ -192,3 +210,32 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
     );
   },
 );
+
+function findTextRange(
+  doc: {
+    descendants: (
+      f: (node: { isText?: boolean; text?: string }, pos: number) => boolean | void,
+    ) => void;
+  },
+  text: string,
+): { from: number; to: number } | null {
+  const raw = text.trim();
+  if (!raw) return null;
+
+  const candidates = [raw];
+  if (raw.length > 120) candidates.push(raw.slice(0, 120));
+  if (raw.length > 60) candidates.push(raw.slice(0, 60));
+
+  for (const candidate of candidates) {
+    let found: { from: number; to: number } | null = null;
+    doc.descendants((node, pos) => {
+      if (found || !node.isText || !node.text) return;
+      const hit = node.text.indexOf(candidate);
+      if (hit === -1) return;
+      found = { from: pos + hit, to: pos + hit + candidate.length };
+      return false;
+    });
+    if (found) return found;
+  }
+  return null;
+}

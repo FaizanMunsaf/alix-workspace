@@ -254,6 +254,7 @@ export function WorkspacePage() {
           onHistoryRefresh={async () => {
             if (selected) await refreshHistory(selected.document_id);
           }}
+          onJumpToSource={(text) => editorRef.current?.jumpToText(text) ?? false}
         />
       </main>
     </div>

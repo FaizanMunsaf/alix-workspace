@@ -1,3 +1,4 @@
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -6,8 +7,8 @@ from typing import Literal
 
 from fastapi import BackgroundTasks, HTTPException, status
 
-from api.backgrounds import enqueue_document_parse
-from core.ast.parsers import parse_docx
+from api.backgrounds import enqueue_document_parse, ingest_parsed_version
+from core.ast.parsers import ASTNode, parse_docx
 from core.config.settings import BACKEND_DIR
 from core.database import get_sync_db_session
 from core.models.document_version import DocumentVersion
@@ -28,6 +29,8 @@ from core.schemas.document_version import (
 )
 from core.schemas.history import CreateDocumentChange, UpdateDocumentChange
 from core.utils.export import editor_html, html_to_docx, html_to_text
+
+logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = BACKEND_DIR / "uploads"
 DOCX_CONTENT_TYPES = {
@@ -217,6 +220,7 @@ def create_checkpoint(
             detail="Document content is empty.",
         )
 
+    tree: list[ASTNode] | None = None
     with get_sync_db_session() as db:
         document = document_crud.get(db, document_id)
         if document is None:
@@ -250,8 +254,12 @@ def create_checkpoint(
         file_path = dest_dir / f"v{new_number}.docx"
         docx_bytes = html_to_docx(markup)
         file_path.write_bytes(docx_bytes)
-        ast_json, raw_text = _snapshot_html(
-            markup, docx_bytes, fallback=dict(latest.ast_json or {})
+        ast_json, raw_text, tree = _snapshot_html(
+            markup,
+            docx_bytes,
+            fallback=dict(latest.ast_json or {}),
+            document_id=document_id,
+            media_dir=dest_dir / "media",
         )
         version = document_version_crud.create(
             db,
@@ -264,6 +272,7 @@ def create_checkpoint(
                 processing_status="completed",
             ),
         )
+        version_id = str(version.id)
         now = datetime.now(timezone.utc)
         if change_id:
             document_change_crud.update(
@@ -292,20 +301,73 @@ def create_checkpoint(
                     decided_at=now,
                 ),
             )
-        return _document_detail(db, document_id)
+        detail = _document_detail(db, document_id)
+
+    if tree:
+        try:
+            ingest_parsed_version(
+                document_id=document_id,
+                version_id=version_id,
+                tree=tree,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to index embeddings for document %s version %s",
+                document_id,
+                version_id,
+            )
+
+    return detail
 
 
-def _snapshot_html(markup: str, data: bytes, *, fallback: dict) -> tuple[dict, str]:
+def _snapshot_html(
+    markup: str,
+    data: bytes,
+    *,
+    fallback: dict,
+    document_id: str | None = None,
+    media_dir: Path | None = None,
+) -> tuple[dict, str, list[ASTNode] | None]:
     try:
-        raw_text, tree = parse_docx(data)
+        raw_text, tree = parse_docx(
+            data,
+            document_id=document_id,
+            media_dir=media_dir,
+        )
         return (
             {"nodes": [node.to_dict() for node in tree], "html": markup},
             raw_text or html_to_text(markup),
+            tree,
         )
     except Exception:  # noqa: BLE001
         snapshot = dict(fallback)
         snapshot["html"] = markup
-        return snapshot, html_to_text(markup)
+        return snapshot, html_to_text(markup), None
+
+
+def read_document_media(document_id: str, filename: str) -> tuple[bytes, str]:
+    from core.ast.parsers.helpers.extract_images import (
+        guess_content_type,
+        media_file_path,
+    )
+
+    path = media_file_path(
+        uploads_dir=UPLOAD_DIR,
+        document_id=document_id,
+        filename=filename,
+    )
+    if path is None or not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media file was not found.",
+        )
+    with get_sync_db_session() as db:
+        if document_crud.get(db, document_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document was not found.",
+            )
+    return path.read_bytes(), guess_content_type(filename)
 
 
 def export_document_docx(

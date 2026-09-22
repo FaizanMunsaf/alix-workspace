@@ -6,6 +6,7 @@ from api.services.documents import (
     export_document_docx,
     get_document,
     list_documents,
+    read_document_media,
     restore_version,
     save_document_content,
     upload_document,
@@ -37,6 +38,12 @@ def export_document(
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/{document_id}/media/{filename}")
+def document_media(document_id: str, filename: str):
+    data, content_type = read_document_media(document_id, filename)
+    return Response(content=data, media_type=content_type)
 
 
 @router.put("/{document_id}/content", response_model=DocumentDetailResponse)

@@ -251,6 +251,13 @@ body {
   vertical-align: top;
 }
 
+.editor-content .tiptap img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.75rem 0;
+}
+
 .assistant-tabs {
   display: flex;
   gap: 0.35rem;
@@ -283,6 +290,12 @@ body {
   font-size: 0.9rem;
 }
 
+.qa-selection-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #1d4ed8;
+}
+
 .qa-source,
 .diff-added,
 .diff-deleted,
@@ -291,6 +304,38 @@ body {
   color: #4b5563;
   border-top: 1px solid #f3f4f6;
   padding-top: 0.5rem;
+}
+
+.qa-source-button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #f3f4f6;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.qa-source-button:hover {
+  color: #1d4ed8;
+}
+
+.qa-source-label {
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.qa-source-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
 }
 
 .diff-added {

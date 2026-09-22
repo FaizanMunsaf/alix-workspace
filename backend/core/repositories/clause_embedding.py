@@ -29,6 +29,7 @@ class ClauseEmbeddingCRUD(BaseCRUD[ClauseEmbedding, CreateClauseEmbedding]):
         *,
         top_k: int,
         document_id: uuid.UUID | None = None,
+        version_id: uuid.UUID | None = None,
     ) -> Select:
         distance = self.model.embedding.cosine_distance(query_embedding)
         stmt = (
@@ -37,8 +38,20 @@ class ClauseEmbeddingCRUD(BaseCRUD[ClauseEmbedding, CreateClauseEmbedding]):
             .order_by(distance)
             .limit(top_k)
         )
-        if document_id is not None:
-            stmt = stmt.where(DocumentVersion.document_id == document_id)
+        if version_id is not None:
+            stmt = stmt.where(self.model.version_id == version_id)
+        elif document_id is not None:
+            # Prefer the newest version that already has embeddings so Ask/Edit
+            # follow the live contract without mixing older checkpoint text.
+            latest_indexed = (
+                select(DocumentVersion.id)
+                .join(ClauseEmbedding, ClauseEmbedding.version_id == DocumentVersion.id)
+                .where(DocumentVersion.document_id == document_id)
+                .order_by(DocumentVersion.version_number.desc())
+                .limit(1)
+                .scalar_subquery()
+            )
+            stmt = stmt.where(self.model.version_id == latest_indexed)
         return stmt
 
     def search(
@@ -48,8 +61,14 @@ class ClauseEmbeddingCRUD(BaseCRUD[ClauseEmbedding, CreateClauseEmbedding]):
         *,
         top_k: int,
         document_id: uuid.UUID | None = None,
+        version_id: uuid.UUID | None = None,
     ) -> list[ClauseSearchHit]:
-        stmt = self.search_query(query_embedding, top_k=top_k, document_id=document_id)
+        stmt = self.search_query(
+            query_embedding,
+            top_k=top_k,
+            document_id=document_id,
+            version_id=version_id,
+        )
         hits: list[ClauseSearchHit] = []
         for embedding, version_document_id, distance in db.execute(stmt):
             hits.append(

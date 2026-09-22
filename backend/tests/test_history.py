@@ -22,7 +22,9 @@ def test_restore_request_requires_version_id():
 
 def test_snapshot_html_keeps_editor_markup():
     markup = "<p>The liability cap is 24 months of fees.</p>"
-    ast_json, raw_text = _snapshot_html(markup, html_to_docx(markup), fallback={})
+    ast_json, raw_text, tree = _snapshot_html(markup, html_to_docx(markup), fallback={})
     assert ast_json["html"] == markup
     assert "liability cap" in raw_text.lower()
     assert ast_json.get("nodes")
+    assert tree is not None
+    assert len(tree) > 0

@@ -11,14 +11,24 @@ export type QAResponse = {
       ast_node_id?: string;
       clause_category?: string;
       distance?: number;
+      label?: string;
     };
   }>;
 };
 
-export function askQuestion(query: string, documentId?: string) {
+export function askQuestion(
+  query: string,
+  documentId?: string,
+  selection?: string | null,
+) {
   return request<QAResponse>("/qa/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, document_id: documentId ?? null, top_k: 5 }),
+    body: JSON.stringify({
+      query,
+      document_id: documentId ?? null,
+      selection: selection?.trim() ? selection.trim() : null,
+      top_k: 8,
+    }),
   });
 }

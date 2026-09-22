@@ -11,6 +11,8 @@ _HEADING_TAGS = {
 def node_to_html(node: ASTNode | dict) -> str:
     data = node.to_dict() if isinstance(node, ASTNode) else node
     node_type = data.get("node_type") or "paragraph"
+    if node_type == "image":
+        return _image_html(data)
     if node_type == "table":
         return _table_html(data)
     if node_type in {"table_header", "table_row", "table_cell"}:
@@ -36,6 +38,14 @@ def node_to_html(node: ASTNode | dict) -> str:
     for child in data.get("children") or []:
         parts.append(node_to_html(child))
     return "".join(parts)
+
+
+def _image_html(data: dict) -> str:
+    metadata = data.get("metadata") or {}
+    src = metadata.get("src")
+    if not isinstance(src, str) or not src.strip():
+        return ""
+    return f'<p><img src="{html.escape(src, quote=True)}" alt=""></p>'
 
 
 def _table_html(data: dict) -> str:

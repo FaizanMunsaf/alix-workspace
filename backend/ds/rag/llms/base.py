@@ -7,7 +7,13 @@ class LLMModel(ABC):
     """
 
     @abstractmethod
-    def generate(self, query: str, context: list[str]) -> str:
+    def generate(
+        self,
+        query: str,
+        context: list[str],
+        *,
+        selection: str | None = None,
+    ) -> str:
         pass
 
     @abstractmethod

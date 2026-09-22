@@ -8,12 +8,19 @@ from core.repositories import (
     document_crud,
     document_message_crud,
 )
+from core.schemas.clause_embedding import ClauseSearchHit
 from core.schemas.history import CreateDocumentMessage
 from ds.rag.embeddings import get_embedding_model
 from ds.rag.llms import get_llm
 
 
-def answer_question(*, query: str, document_id: str | None, top_k: int) -> dict:
+def answer_question(
+    *,
+    query: str,
+    document_id: str | None,
+    top_k: int,
+    selection: str | None = None,
+) -> dict:
     if not query.strip():
         raise HTTPException(status_code=400, detail="query is required.")
 
@@ -26,7 +33,12 @@ def answer_question(*, query: str, document_id: str | None, top_k: int) -> dict:
                 status_code=400, detail="document_id is not a valid UUID."
             ) from exc
 
-    query_embedding = get_embedding_model().embed_query(query.strip())
+    focus = (selection or "").strip()
+    search_text = query.strip()
+    if focus:
+        search_text = f"{search_text}\n\nFocus passage:\n{focus}"
+
+    query_embedding = get_embedding_model().embed_query(search_text)
     with get_sync_db_session() as db:
         hits = clause_embedding_crud.search(
             db,
@@ -34,13 +46,19 @@ def answer_question(*, query: str, document_id: str | None, top_k: int) -> dict:
             top_k=top_k,
             document_id=document_uuid,
         )
-    answer = get_llm().generate(query, [hit.content for hit in hits])
+
+    context_blocks = _format_context(hits, selection=focus)
+    answer = get_llm().generate(
+        query.strip(),
+        context_blocks,
+        selection=focus or None,
+    )
 
     if document_uuid is not None:
         _store_turn(document_uuid, query=query.strip(), answer=answer)
 
     return {
-        "query": query,
+        "query": query.strip(),
         "answer": answer,
         "sources": [
             {
@@ -51,11 +69,32 @@ def answer_question(*, query: str, document_id: str | None, top_k: int) -> dict:
                     "ast_node_id": str(hit.ast_node_id),
                     "clause_category": hit.clause_category,
                     "distance": hit.distance,
+                    "label": f"Source {index}",
                 },
             }
-            for hit in hits
+            for index, hit in enumerate(hits, start=1)
         ],
     }
+
+
+def _format_context(
+    hits: list[ClauseSearchHit],
+    *,
+    selection: str,
+) -> list[str]:
+    blocks: list[str] = []
+    selected_norm = _normalize(selection) if selection else ""
+    for index, hit in enumerate(hits, start=1):
+        category = hit.clause_category or "clause"
+        body = hit.content.strip()
+        if selected_norm and _normalize(body) == selected_norm:
+            continue
+        blocks.append(f"[Source {index}] ({category})\n{body}")
+    return blocks
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.split()).casefold()
 
 
 def _store_turn(document_id: uuid.UUID, *, query: str, answer: str) -> None:

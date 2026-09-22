@@ -10,12 +10,12 @@ from .helpers.truncate import truncate
 
 _ARTICLE_RE = re.compile(
     r"^(article|section|clause)\s+([\dA-Za-z.]+)(?:[:.\-]\s*|\s+)(.*)$",
-    re.I,
+    re.IGNORECASE,
 )
-_QUESTION_RE = re.compile(r"^(Q\d+)[.)]\s+(.*)$", re.I)
+_QUESTION_RE = re.compile(r"^(Q\d+)[.)]\s+(.*)$", re.IGNORECASE)
 _NUMBERED_RE = re.compile(r"^(\d+(?:\.\d+)*)(?:[.)])?\s+(.*)$")
-_LETTER_RE = re.compile(r"^\(([a-z])\)\s+(.*)$", re.I)
-_ROMAN_RE = re.compile(r"^\(([ivxlcdm]+)\)\s+(.*)$", re.I)
+_LETTER_RE = re.compile(r"^\(([a-z])\)\s+(.*)$", re.IGNORECASE)
+_ROMAN_RE = re.compile(r"^\(([ivxlcdm]+)\)\s+(.*)$", re.IGNORECASE)
 
 
 def classify_paragraph(paragraph: Paragraph, text: str) -> ASTNode | None:

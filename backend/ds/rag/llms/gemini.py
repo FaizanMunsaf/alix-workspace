@@ -15,9 +15,20 @@ class GeminiLLM(LLMModel):
         genai.configure(api_key=api_key)  # type: ignore
         self.model = genai.GenerativeModel(model_name)  # type: ignore
 
-    def generate(self, query: str, context: list[str]) -> str:
+    def generate(
+        self,
+        query: str,
+        context: list[str],
+        *,
+        selection: str | None = None,
+    ) -> str:
         prompt = load_prompt("qa").format(
-            context="\n".join(context),
+            context="\n\n".join(context)
+            if context
+            else "(No matching contract passages were retrieved.)",
+            selection=selection.strip()
+            if selection and selection.strip()
+            else "(None)",
             query=query,
         )
         response = self.model.generate_content(prompt)

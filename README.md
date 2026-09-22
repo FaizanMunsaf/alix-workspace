@@ -1,46 +1,144 @@
 # Alix
 
-Legal tech platform for contract AST analysis and vector search. Built with React + TypeScript + Vite (frontend) and FastAPI + SQLAlchemy + pgvector (backend).
+AI-native contract workspace: import a DOCX, edit it in place, ask grounded questions, propose scoped AI edits, and keep a reviewable version history. Built with React + TypeScript + Vite + TipTap (frontend) and FastAPI + SQLAlchemy + pgvector (backend).
 
-![Alix System Architecture & Workflow](./alix-workflow.jpg)
+![Alix System Architecture & Workflow](./readme-images/alix-workflow.jpg)
 
 ---
 
-## Project Structure
+## What works today
+
+| Area | Capability |
+|------|------------|
+| **Workspace** | Upload `.docx`, reopen stored docs, TipTap edit, Save, Export `.docx` |
+| **Structure** | Headings, paragraphs, lists, tables, embedded bitmap images |
+| **AI Edit** | Select a passage or whole document → propose before/after → Accept / Reject |
+| **Versions** | Save and Accept create checkpoints; Restore copies an older version forward |
+| **History** | Changes (user vs AI), conversation turns, pending redlines |
+| **Ask** | Clause retrieval over the active document, selection-aware answers, `[Source N]` citations, jump-to-passage, AST outline |
+| **Vectors** | Clause embeddings on ingest and on checkpoint; search uses the latest indexed version |
+
+Media for embedded images is stored under `backend/uploads/{document_id}/media/` and served at `/api/v1/documents/{id}/media/{filename}` (not base64 in HTML).
+
+---
+
+## System flow
+
+![Alix system flow](./readme-images/alix-system-flow.png)
+
+<details>
+
+```mermaid
+flowchart TB
+  subgraph Client["Frontend · TipTap workspace"]
+    Upload["Upload / open DOCX"]
+    Editor["Edit document HTML"]
+    AskUI["Ask panel"]
+    EditUI["Edit panel"]
+    HistUI["History / Diff / Restore"]
+  end
+
+  subgraph API["Backend · FastAPI"]
+    DocsAPI["/documents"]
+    MediaAPI["/documents/.../media"]
+    QAAPI["/qa"]
+    EditsAPI["/edits/propose · apply"]
+    HistAPI["/history · restore"]
+  end
+
+  subgraph Ingest["Ingest and checkpoint"]
+    Parse["parse_docx to AST"]
+    MediaStore["Store bitmaps in uploads/id/media"]
+    HTML["AST to editor HTML"]
+    Embed["Clause embeddings to pgvector"]
+    Checkpoint["Save / Accept - new version and re-embed"]
+  end
+
+  subgraph Intel["Contract intelligence"]
+    Retrieve["Retrieve top-k clauses - latest indexed version"]
+    LLM["Gemini grounded prompt"]
+  end
+
+  DB[("Postgres: documents, versions, AST, changes, messages, embeddings")]
+  Disk[("Disk: uploads/document_id/")]
+
+  Upload --> DocsAPI --> Parse
+  Parse --> MediaStore --> Disk
+  Parse --> HTML --> Editor
+  Parse --> Embed --> DB
+  MediaAPI --> Disk
+  Editor --> MediaAPI
+
+  Editor -->|Save| DocsAPI --> Checkpoint --> DB
+  Checkpoint --> Embed
+
+  AskUI -->|query and selection| QAAPI --> Retrieve --> LLM --> AskUI
+  Retrieve --> DB
+  AskUI -->|jump to source| Editor
+
+  EditUI -->|selection or whole doc| EditsAPI
+  EditsAPI -->|whole doc| Retrieve
+  EditsAPI --> LLM
+  EditUI -->|Accept| EditsAPI --> Checkpoint
+  EditUI -->|Reject| HistAPI
+
+  HistUI --> HistAPI --> DB
+  HistUI -->|Restore| DocsAPI --> Checkpoint
+  DocsAPI -->|Export DOCX| Disk
+```
+
+</details>
+
+---
+
+## Known limitations
+
+- Not a full Word clone: headers/footers, complex styles, and auto-numbering models are not fully preserved.
+- Checkpointing re-parses via HTML ↔ DOCX; some structure can be lossier than the original ingest.
+- Whole-document AI edits retrieve a top set of clauses (not the entire file) and apply first-occurrence string patches.
+- Ask answers only from retrieved passages (`top_k`, default 8); it does not load the full document into every model call.
+
+---
+
+## Project structure
 
 ```text
 alix-assessment/
-├── alix-workflow.jpg
+├── readme-images/
+│   ├── alix-workflow.jpg      # assessment architecture overview
+│   └── alix-system-flow.png   # current product flow
 ├── docker-compose-local.yml   # db + backend + frontend
-├── frontend/                  # React + TypeScript + Vite + Tiptap
+├── frontend/                  # React + TypeScript + Vite + TipTap
 │   ├── src/
-│   │   ├── pages/             # Home, Editor
+│   │   ├── api/               # documents, edits, qa, history, diff
+│   │   ├── components/        # documents, editor, assistant
+│   │   ├── pages/             # WorkspacePage
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── Dockerfile
-│   ├── package.json
-│   └── vite.config.ts
+│   └── package.json
 └── backend/                   # Python app root — run backend from here
     ├── main.py
     ├── alembic/
     ├── admin/
-    ├── api/
+    ├── api/                   # routers + services + backgrounds
     ├── core/
+    │   ├── ast/               # DOCX parse, AST, diff helpers
     │   ├── config/settings.py
     │   ├── database.py
-    │   └── models/            # SQLAlchemy models (pgvector 3072-dim)
-    ├── ds/                    # Data science / RAG modules
+    │   ├── models/            # SQLAlchemy models (pgvector 3072-dim)
+    │   ├── repositories/
+    │   └── utils/export/      # AST/HTML/DOCX round-trip
+    ├── ds/rag/                # embeddings, LLMs, prompts, vectorstores
+    ├── tests/
+    ├── uploads/               # per-document files + media/
     ├── requirements/
-    ├── scripts/
-    ├── Dockerfile
     └── .env
 ```
 
-
-
 ---
 
-## Quick Start (Docker)
+## Quick start (Docker)
 
 From project root:
 
@@ -49,14 +147,22 @@ docker compose -f docker-compose-local.yml up -d
 ```
 
 Copy `backend/.env.example` → `backend/.env`:
+
 - Full Docker stack → `DB_HOST=db`
 - DB container only → `DB_HOST=localhost`
 
+Set `GEMINI_API_KEY` (and related embedding/LLM settings) for Ask and AI edits.
+
 Uses `pgvector/pgvector:pg16` — pgvector is included automatically in Docker.
+
+| Service | URL |
+|---------|-----|
+| Workspace | http://localhost:5173/ |
+| API docs | http://localhost:8000/docs |
 
 ---
 
-## Backend (Local)
+## Backend (local)
 
 **Requirements:** Python 3.11+ (3.12 recommended)
 
@@ -80,7 +186,7 @@ cd backend
 python -m venv venv
 venv\Scripts\activate          # Windows
 pip install -r requirements/backend.txt
-copy .env.example .env         # DB_HOST=localhost
+copy .env.example .env         # DB_HOST=localhost, GEMINI_API_KEY=...
 
 alembic upgrade head
 uvicorn main:app --reload --port 8000
@@ -97,9 +203,16 @@ uvicorn main:app --reload --port 8000
 
 Admin login: `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `backend/.env`.
 
+### Tests
+
+```bash
+cd backend
+.\venv\Scripts\python.exe -m pytest -q
+```
+
 ---
 
-## Frontend (Local)
+## Frontend (local)
 
 **Requirements:** Node.js 22+
 
@@ -107,8 +220,7 @@ Admin login: `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `backend/.env`.
 
 - React 18 + TypeScript
 - Vite 8
-- React Router 7
-- Tiptap (rich text editor on `/editor`)
+- TipTap (contract editor on the workspace page)
 
 ### Run
 
@@ -122,8 +234,7 @@ npm run dev
 
 | Page | URL |
 |------|-----|
-| Home | http://localhost:5173/ |
-| Editor | http://localhost:5173/editor |
+| Workspace | http://localhost:5173/ |
 
 ### Scripts
 
@@ -175,7 +286,7 @@ docker compose -f docker-compose-local.yml exec backend alembic upgrade head
 
 ---
 
-## Git Hooks
+## Git hooks
 
 From project root (not `backend/`):
 
@@ -185,6 +296,7 @@ pre-commit install
 ```
 
 Hooks:
+
 - **Ruff** — Python (`backend/`)
 - **ESLint** — TypeScript/React (`frontend/`)
 

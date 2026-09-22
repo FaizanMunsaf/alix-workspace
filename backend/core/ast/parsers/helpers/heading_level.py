@@ -2,7 +2,7 @@ import re
 
 from docx.text.paragraph import Paragraph
 
-_HEADING_RE = re.compile(r"^heading\s*(\d+)$", re.I)
+_HEADING_RE = re.compile(r"^heading\s*(\d+)$", re.IGNORECASE)
 
 
 def heading_level(paragraph: Paragraph) -> int | None:
