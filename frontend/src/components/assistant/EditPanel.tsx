@@ -158,8 +158,8 @@ export function EditPanel({
         </p>
       ) : (
         <p className="hint">
-          Broad instructions search indexed clauses first, then propose only those
-          patches.
+          Broad instructions use the full indexed contract when it fits, otherwise the
+          top matching clauses. Excerpts are uniquified so apply hits the right place.
         </p>
       )}
 

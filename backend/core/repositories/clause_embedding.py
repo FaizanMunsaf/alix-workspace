@@ -54,6 +54,38 @@ class ClauseEmbeddingCRUD(BaseCRUD[ClauseEmbedding, CreateClauseEmbedding]):
             stmt = stmt.where(self.model.version_id == latest_indexed)
         return stmt
 
+    def list_latest_for_document(
+        self, db: Session, document_id: uuid.UUID
+    ) -> list[ClauseSearchHit]:
+        latest_indexed = (
+            select(DocumentVersion.id)
+            .join(ClauseEmbedding, ClauseEmbedding.version_id == DocumentVersion.id)
+            .where(DocumentVersion.document_id == document_id)
+            .order_by(DocumentVersion.version_number.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        stmt = (
+            select(self.model, DocumentVersion.document_id)
+            .join(DocumentVersion, self.model.version_id == DocumentVersion.id)
+            .where(self.model.version_id == latest_indexed)
+            .order_by(self.model.created_at.asc())
+        )
+        hits: list[ClauseSearchHit] = []
+        for embedding, version_document_id in db.execute(stmt):
+            hits.append(
+                ClauseSearchHit(
+                    id=embedding.id,
+                    version_id=embedding.version_id,
+                    document_id=version_document_id,
+                    ast_node_id=embedding.ast_node_id,
+                    clause_category=embedding.clause_category,
+                    content=embedding.content,
+                    distance=0.0,
+                )
+            )
+        return hits
+
     def search(
         self,
         db: Session,

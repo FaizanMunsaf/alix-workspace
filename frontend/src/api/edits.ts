@@ -9,6 +9,7 @@ export type EditPatch = {
   after: string;
   rationale: string;
   status: "pending";
+  occurrence?: number;
 };
 
 export type ProposeEditResponse = {

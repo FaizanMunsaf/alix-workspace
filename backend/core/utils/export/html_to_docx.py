@@ -29,6 +29,7 @@ class _HtmlToDocx(HTMLParser):
         self.tags: list[str] = []
         self.runs: list[_Run] = []
         self.list_kind: str | None = None
+        self.list_depth = 0
         self.in_table = False
         self.rows: list[list[str]] = []
         self.row: list[str] = []
@@ -46,6 +47,7 @@ class _HtmlToDocx(HTMLParser):
             self._add_image(dict(attrs).get("src") or "")
         elif tag in {"ul", "ol"}:
             self.list_kind = tag
+            self.list_depth += 1
         elif tag == "table":
             self.in_table = True
             self.rows = []
@@ -74,7 +76,12 @@ class _HtmlToDocx(HTMLParser):
             self._flush_table()
             self.in_table = False
         elif tag in {"ul", "ol"}:
-            self.list_kind = None
+            self.list_depth = max(0, self.list_depth - 1)
+            if self.list_depth == 0:
+                self.list_kind = None
+            else:
+                # Restore outer list kind from remaining open tags.
+                self.list_kind = "ol" if "ol" in self.tags[:-1] else "ul"
         if self.tags and self.tags[-1] == tag:
             self.tags.pop()
         elif tag in self.tags:
@@ -118,6 +125,14 @@ class _HtmlToDocx(HTMLParser):
         if tag == "li":
             style = "List Number" if self.list_kind == "ol" else "List Bullet"
             paragraph = self._paragraph(style)
+            # Visible indent for nested lists (Word auto-number levels are not rebuilt).
+            if self.list_depth > 1:
+                try:
+                    paragraph.paragraph_format.left_indent = Inches(
+                        0.25 * (self.list_depth - 1)
+                    )
+                except (AttributeError, ValueError):
+                    pass
             _apply_runs(paragraph, runs)
             return
         paragraph = self.document.add_paragraph()

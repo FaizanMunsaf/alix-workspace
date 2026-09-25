@@ -28,7 +28,7 @@ export function askQuestion(
       query,
       document_id: documentId ?? null,
       selection: selection?.trim() ? selection.trim() : null,
-      top_k: 8,
+      top_k: 12,
     }),
   });
 }

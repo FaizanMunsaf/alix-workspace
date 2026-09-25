@@ -20,24 +20,40 @@ def node_to_html(node: ASTNode | dict) -> str:
 
     title = (data.get("title") or "").strip()
     content = (data.get("content") or "").strip()
+    metadata = data.get("metadata") or {}
+    number = str(metadata.get("number") or title or "").strip()
+    attrs = _clause_attrs(node_type=node_type, number=number, title=title)
     parts: list[str] = []
     heading_tag = _HEADING_TAGS.get(node_type)
     if heading_tag and title:
-        parts.append(f"<{heading_tag}>{html.escape(title)}</{heading_tag}>")
+        parts.append(f"<{heading_tag}{attrs}>{html.escape(title)}</{heading_tag}>")
         if content:
             parts.append(f"<p>{html.escape(content)}</p>")
     elif title and content:
         parts.append(
-            f"<p><strong>{html.escape(title)}</strong> {html.escape(content)}</p>"
+            f"<p{attrs}><strong>{html.escape(title)}</strong> {html.escape(content)}</p>"
         )
     elif title:
-        parts.append(f"<p><strong>{html.escape(title)}</strong></p>")
+        parts.append(f"<p{attrs}><strong>{html.escape(title)}</strong></p>")
     elif content:
-        parts.append(f"<p>{html.escape(content)}</p>")
+        parts.append(f"<p{attrs}>{html.escape(content)}</p>")
 
     for child in data.get("children") or []:
         parts.append(node_to_html(child))
     return "".join(parts)
+
+
+def _clause_attrs(*, node_type: str, number: str, title: str) -> str:
+    bits: list[str] = []
+    if node_type in {"clause", "sub_clause", "section", "heading"}:
+        bits.append(f'data-node-type="{html.escape(node_type, quote=True)}"')
+    if number:
+        bits.append(f'data-clause="{html.escape(number, quote=True)}"')
+    elif title:
+        bits.append(f'data-clause="{html.escape(title[:80], quote=True)}"')
+    if not bits:
+        return ""
+    return " " + " ".join(bits)
 
 
 def _image_html(data: dict) -> str:

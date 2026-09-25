@@ -100,8 +100,12 @@ export function AssistantPanel({
           versions={versions}
           changes={changes}
           messages={messages}
+          applyingId={applyingId}
           restoringId={restoringId}
           onRestore={onRestore}
+          onAccept={onAcceptEdit}
+          onReject={onRejectEdit}
+          onJumpToSource={onJumpToSource}
         />
       )}
     </aside>

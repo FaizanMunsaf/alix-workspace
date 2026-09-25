@@ -169,11 +169,17 @@ function walkOutline(nodes: AstNodeLike[], items: OutlineItem[]) {
     const title = (node.title || "").trim();
     const content = (node.content || "").trim();
     if (
-      (type === "heading" || type === "section" || type === "clause") &&
+      (type === "heading" ||
+        type === "section" ||
+        type === "clause" ||
+        type === "sub_clause") &&
       (title || content)
     ) {
       const label = title || content.slice(0, 80);
-      items.push({ label, jumpText: title || content });
+      items.push({
+        label: title ? label : content.slice(0, 80),
+        jumpText: title ? `${title} ${content}`.trim() : content,
+      });
     }
     if (node.children?.length) walkOutline(node.children, items);
   }

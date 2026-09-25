@@ -38,12 +38,15 @@ def answer_question(
     if focus:
         search_text = f"{search_text}\n\nFocus passage:\n{focus}"
 
+    # Leave room for the selected passage as Source 0 when present.
+    retrieve_k = max(1, top_k - 1) if focus else top_k
+
     query_embedding = get_embedding_model().embed_query(search_text)
     with get_sync_db_session() as db:
         hits = clause_embedding_crud.search(
             db,
             query_embedding,
-            top_k=top_k,
+            top_k=retrieve_k,
             document_id=document_uuid,
         )
 
@@ -57,23 +60,37 @@ def answer_question(
     if document_uuid is not None:
         _store_turn(document_uuid, query=query.strip(), answer=answer)
 
+    sources: list[dict] = []
+    if focus:
+        sources.append(
+            {
+                "content": focus,
+                "metadata": {
+                    "document_id": document_id,
+                    "clause_category": "selection",
+                    "label": "Selected",
+                },
+            }
+        )
+    sources.extend(
+        {
+            "content": hit.content,
+            "metadata": {
+                "document_id": str(hit.document_id),
+                "version_id": str(hit.version_id),
+                "ast_node_id": str(hit.ast_node_id),
+                "clause_category": hit.clause_category,
+                "distance": hit.distance,
+                "label": f"Source {index}",
+            },
+        }
+        for index, hit in enumerate(hits, start=1)
+    )
+
     return {
         "query": query.strip(),
         "answer": answer,
-        "sources": [
-            {
-                "content": hit.content,
-                "metadata": {
-                    "document_id": str(hit.document_id),
-                    "version_id": str(hit.version_id),
-                    "ast_node_id": str(hit.ast_node_id),
-                    "clause_category": hit.clause_category,
-                    "distance": hit.distance,
-                    "label": f"Source {index}",
-                },
-            }
-            for index, hit in enumerate(hits, start=1)
-        ],
+        "sources": sources,
     }
 
 
@@ -84,6 +101,8 @@ def _format_context(
 ) -> list[str]:
     blocks: list[str] = []
     selected_norm = _normalize(selection) if selection else ""
+    if selection:
+        blocks.append(f"[Selected]\n{selection.strip()}")
     for index, hit in enumerate(hits, start=1):
         category = hit.clause_category or "clause"
         body = hit.content.strip()

@@ -37,12 +37,14 @@ def test_format_context_labels_sources():
     assert blocks[1].startswith("[Source 2] (heading)")
 
 
-def test_format_context_skips_duplicate_selection():
+def test_format_context_puts_selection_first():
     selection = "Liability is capped at fees."
     blocks = _format_context(
         [_hit(selection), _hit("Other clause about renewal.")],
         selection=selection,
     )
-    assert len(blocks) == 1
-    assert "renewal" in blocks[0]
-    assert "Liability is capped" not in blocks[0]
+    assert blocks[0].startswith("[Selected]")
+    assert "Liability is capped" in blocks[0]
+    assert len(blocks) == 2
+    assert "renewal" in blocks[1]
+    assert "Liability is capped" not in blocks[1]

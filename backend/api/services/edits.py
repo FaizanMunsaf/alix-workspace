@@ -10,16 +10,29 @@ from core.repositories import (
     document_change_crud,
     document_version_crud,
 )
+from core.schemas.clause_embedding import ClauseSearchHit
 from core.schemas.edits import (
     ApplyEditResponse,
     EditPatch,
     ProposeEditResponse,
 )
 from core.schemas.history import CreateDocumentChange
-from core.utils.edits import PatchConflict, apply_text_patch, parse_llm_json
+from core.utils.edits import (
+    PatchConflict,
+    apply_text_patch,
+    count_plain_matches,
+    parse_llm_json,
+    plain_text_in_html,
+    uniquify_excerpt,
+)
+from core.utils.export import editor_html, html_to_text
 from ds.rag.embeddings import get_embedding_model
 from ds.rag.llms import get_llm
 from ds.rag.prompts import load_prompt
+
+# Prefer sending the full indexed contract when it fits the prompt budget.
+_WHOLE_DOC_CHAR_BUDGET = 48_000
+_WHOLE_DOC_FALLBACK_TOP_K = 24
 
 
 def propose_edits(
@@ -36,14 +49,18 @@ def propose_edits(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="instruction is required.",
         )
-    get_document(document_id)
+    detail = get_document(document_id)
+    current_html = (html if html is not None else detail.html) or ""
 
     if scope == "selection":
         result = _propose_selection(
-            document_id, instruction=text, selection=selection_text
+            document_id,
+            instruction=text,
+            selection=selection_text,
+            html=current_html,
         )
     else:
-        result = _propose_document(document_id, instruction=text)
+        result = _propose_document(document_id, instruction=text, html=current_html)
     result.patches = _store_pending_patches(
         document_id, instruction=result.instruction, patches=result.patches
     )
@@ -58,6 +75,7 @@ def apply_edit(
     change_id: str | None = None,
     before: str | None = None,
     after: str | None = None,
+    occurrence: int = 0,
 ) -> ApplyEditResponse:
     detail = get_document(document_id)
     instruction = "AI edit"
@@ -91,8 +109,17 @@ def apply_edit(
         )
 
     source = html if html is not None else detail.html or ""
+    # Prefer a unique excerpt; fall back to the requested occurrence index.
+    match_index = occurrence
+    if (before or "").strip() and count_plain_matches(source, before or "") > 1:
+        unique = uniquify_excerpt(source, before or "", html_to_text(source))
+        if unique and count_plain_matches(source, unique) == 1:
+            before = unique
+            match_index = 0
     try:
-        updated = apply_text_patch(source, before or "", after or "")
+        updated = apply_text_patch(
+            source, before or "", after or "", occurrence=match_index
+        )
     except PatchConflict as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -152,13 +179,18 @@ def _store_pending_patches(
                     after=row.after,
                     rationale=row.rationale or "",
                     status="pending",
+                    occurrence=patch.occurrence,
                 )
             )
         return stored
 
 
 def _propose_selection(
-    document_id: str, *, instruction: str, selection: str | None
+    document_id: str,
+    *,
+    instruction: str,
+    selection: str | None,
+    html: str,
 ) -> ProposeEditResponse:
     selected = (selection or "").strip()
     if not selected:
@@ -166,6 +198,13 @@ def _propose_selection(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Select a clause or passage before asking for a scoped edit.",
         )
+    if html and not plain_text_in_html(html, selected):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The selected text is no longer in the document.",
+        )
+    unique = uniquify_excerpt(html, selected, html_to_text(html)) if html else selected
+    selected = unique or selected
     payload = _llm_json(
         load_prompt("edit_selection").format(
             instruction=instruction, selection=selected
@@ -186,6 +225,7 @@ def _propose_selection(
         before=selected,
         after=after,
         rationale=rationale,
+        occurrence=0,
     )
     return ProposeEditResponse(
         document_id=uuid.UUID(document_id),
@@ -196,7 +236,9 @@ def _propose_selection(
     )
 
 
-def _propose_document(document_id: str, *, instruction: str) -> ProposeEditResponse:
+def _propose_document(
+    document_id: str, *, instruction: str, html: str
+) -> ProposeEditResponse:
     try:
         document_uuid = uuid.UUID(document_id)
     except ValueError as exc:
@@ -205,30 +247,34 @@ def _propose_document(document_id: str, *, instruction: str) -> ProposeEditRespo
             detail="document_id is not a valid UUID.",
         ) from exc
 
-    query_embedding = get_embedding_model().embed_query(instruction)
     with get_sync_db_session() as db:
-        hits = clause_embedding_crud.search(
-            db,
-            query_embedding,
-            top_k=8,
-            document_id=document_uuid,
-        )
+        if not html.strip():
+            versions = document_version_crud.list_by_document_id(db, document_id)
+            if versions:
+                html = editor_html(versions[-1].ast_json) or ""
+        hits, coverage = _candidate_clauses(db, document_uuid, instruction)
+
     if not hits:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="No indexed clauses were found for this document.",
         )
     clause_block = "\n\n".join(
-        f"- [{hit.clause_category}] {hit.content}" for hit in hits
+        f"- [{index}] [{hit.clause_category}] {hit.content}"
+        for index, hit in enumerate(hits, start=1)
     )
     payload = _llm_json(
         load_prompt("edit_document").format(
-            instruction=instruction, clauses=clause_block
+            instruction=instruction,
+            clauses=clause_block,
+            coverage=coverage,
         )
     )
     raw_patches = payload.get("patches") or []
     allowed = [hit.content for hit in hits]
     patches: list[EditPatch] = []
+    seen_before: set[str] = set()
+    plain_doc = html_to_text(html) if html else ""
     for item in raw_patches:
         before = str(item.get("before") or "").strip()
         after = str(item.get("after") or "").strip()
@@ -236,6 +282,21 @@ def _propose_document(document_id: str, *, instruction: str) -> ProposeEditRespo
             continue
         if not any(before in clause for clause in allowed):
             continue
+        context = next((clause for clause in allowed if before in clause), before)
+        unique = uniquify_excerpt(html, before, context) if html else before
+        if unique is None:
+            continue
+        before = unique
+        if before in seen_before:
+            continue
+        occurrence = 0
+        matches = count_plain_matches(html, before) if html else 1
+        if matches == 0:
+            continue
+        if matches > 1:
+            # Still ambiguous after expansion — pin to first match and note it.
+            occurrence = 0
+        seen_before.add(before)
         patches.append(
             EditPatch(
                 id=str(uuid.uuid4()),
@@ -243,11 +304,14 @@ def _propose_document(document_id: str, *, instruction: str) -> ProposeEditRespo
                 before=before,
                 after=after,
                 rationale=str(item.get("rationale") or ""),
+                occurrence=occurrence,
             )
         )
     plan = [str(label) for label in (payload.get("plan") or []) if str(label).strip()]
     if not plan:
         plan = [patch.target for patch in patches]
+    if coverage.startswith("full") and plain_doc:
+        plan = [f"Coverage: {coverage}", *plan]
     return ProposeEditResponse(
         document_id=document_uuid,
         scope="document",
@@ -255,6 +319,24 @@ def _propose_document(document_id: str, *, instruction: str) -> ProposeEditRespo
         plan=plan,
         patches=patches,
     )
+
+
+def _candidate_clauses(
+    db, document_uuid: uuid.UUID, instruction: str
+) -> tuple[list[ClauseSearchHit], str]:
+    all_hits = clause_embedding_crud.list_latest_for_document(db, document_uuid)
+    total_chars = sum(len(hit.content or "") for hit in all_hits)
+    if all_hits and total_chars <= _WHOLE_DOC_CHAR_BUDGET:
+        return all_hits, f"full ({len(all_hits)} clauses)"
+
+    query_embedding = get_embedding_model().embed_query(instruction)
+    hits = clause_embedding_crud.search(
+        db,
+        query_embedding,
+        top_k=_WHOLE_DOC_FALLBACK_TOP_K,
+        document_id=document_uuid,
+    )
+    return hits, f"retrieved top {len(hits)} of {len(all_hits)} clauses"
 
 
 def _llm_json(prompt: str) -> dict:

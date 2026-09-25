@@ -235,6 +235,9 @@ export function WorkspacePage() {
             processingStatus={processing}
             contentNonce={contentNonce}
             editable={canEdit}
+            pendingRedlines={changes
+              .filter((change) => change.decision === "pending")
+              .map((change) => ({ before: change.before, after: change.after }))}
             onDirty={() => setDirty(true)}
             onSelectionChange={setSelection}
           />

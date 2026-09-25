@@ -1,4 +1,12 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Extension } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -6,6 +14,8 @@ import Table from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 export type EditorSelection = {
   from: number;
@@ -19,15 +29,66 @@ export type ContractEditorHandle = {
   jumpToText: (text: string) => boolean;
 };
 
+export type PendingRedline = {
+  before: string;
+  after: string;
+};
+
 type Props = {
   documentId: string | null;
   html: string;
   processingStatus: string | null;
   contentNonce: number;
   editable: boolean;
+  pendingRedlines?: PendingRedline[];
   onDirty: () => void;
   onSelectionChange: (selection: EditorSelection | null) => void;
 };
+
+const pendingRedlineKey = new PluginKey("pendingRedlines");
+
+function PendingRedlineExtension(getRedlines: () => PendingRedline[]) {
+  return Extension.create({
+    name: "pendingRedlines",
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          key: pendingRedlineKey,
+          props: {
+            decorations(state) {
+              const redlines = getRedlines().filter(
+                (item) => item.before.trim() || item.after.trim(),
+              );
+              if (!redlines.length) return DecorationSet.empty;
+              const decorations = [];
+              for (const redline of redlines) {
+                const range = findTextRange(state.doc, redline.before);
+                if (!range) continue;
+                decorations.push(
+                  Decoration.inline(range.from, range.to, {
+                    class: "redline-deleted",
+                  }),
+                );
+                if (redline.after.trim()) {
+                  decorations.push(
+                    Decoration.widget(range.to, () => {
+                      const mark = document.createElement("span");
+                      mark.className = "redline-inserted";
+                      mark.textContent = redline.after;
+                      mark.title = "Proposed replacement (pending)";
+                      return mark;
+                    }),
+                  );
+                }
+              }
+              return DecorationSet.create(state.doc, decorations);
+            },
+          },
+        }),
+      ];
+    },
+  });
+}
 
 export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
   function ContractEditor(
@@ -37,15 +98,19 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
       processingStatus,
       contentNonce,
       editable,
+      pendingRedlines = [],
       onDirty,
       onSelectionChange,
     },
     ref,
   ) {
     const appliedKey = useRef("");
+    const pendingRef = useRef(pendingRedlines);
+    pendingRef.current = pendingRedlines;
     const [, setToolbarTick] = useState(0);
-    const editor = useEditor({
-      extensions: [
+
+    const extensions = useMemo(
+      () => [
         StarterKit,
         Image.configure({
           inline: false,
@@ -55,7 +120,13 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
         TableRow,
         TableHeader,
         TableCell,
+        PendingRedlineExtension(() => pendingRef.current),
       ],
+      [],
+    );
+
+    const editor = useEditor({
+      extensions,
       content: "<p></p>",
       editable,
       editorProps: {
@@ -116,6 +187,12 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
       appliedKey.current = key;
     }, [documentId, processingStatus, contentNonce, html, editor]);
 
+    useEffect(() => {
+      if (!editor) return;
+      // Force decoration rebuild when pending redlines change.
+      editor.view.dispatch(editor.state.tr.setMeta(pendingRedlineKey, Date.now()));
+    }, [editor, pendingRedlines]);
+
     if (!documentId) {
       return (
         <div className="editor-empty">
@@ -143,8 +220,16 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
       );
     }
 
+    const pendingCount = pendingRedlines.filter((item) => item.before.trim()).length;
+
     return (
       <section className="editor-page">
+        {pendingCount > 0 && (
+          <p className="pending-redline-banner">
+            {pendingCount} pending AI redline{pendingCount === 1 ? "" : "s"}: struck text is
+            original, green insert is the proposal — Accept or Reject in Edit / History.
+          </p>
+        )}
         {editor && (
           <div className="editor-toolbar">
             <button
@@ -211,31 +296,41 @@ export const ContractEditor = forwardRef<ContractEditorHandle, Props>(
   },
 );
 
+type TextDoc = {
+  descendants: (
+    f: (node: { isText?: boolean; text?: string }, pos: number) => boolean | void,
+  ) => void;
+};
+
 function findTextRange(
-  doc: {
-    descendants: (
-      f: (node: { isText?: boolean; text?: string }, pos: number) => boolean | void,
-    ) => void;
-  },
+  doc: TextDoc,
   text: string,
 ): { from: number; to: number } | null {
   const raw = text.trim();
   if (!raw) return null;
 
   const candidates = [raw];
-  if (raw.length > 120) candidates.push(raw.slice(0, 120));
-  if (raw.length > 60) candidates.push(raw.slice(0, 60));
+  if (raw.length > 160) candidates.push(raw.slice(0, 160));
+  if (raw.length > 80) candidates.push(raw.slice(0, 80));
+  if (raw.length > 40) candidates.push(raw.slice(0, 40));
+
+  // Join text nodes so matches work across bold/italic runs in the same clause.
+  const chars: number[] = [];
+  let plain = "";
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    for (let i = 0; i < node.text.length; i += 1) {
+      chars.push(pos + i);
+      plain += node.text[i];
+    }
+  });
 
   for (const candidate of candidates) {
-    let found: { from: number; to: number } | null = null;
-    doc.descendants((node, pos) => {
-      if (found || !node.isText || !node.text) return;
-      const hit = node.text.indexOf(candidate);
-      if (hit === -1) return;
-      found = { from: pos + hit, to: pos + hit + candidate.length };
-      return false;
-    });
-    if (found) return found;
+    const hit = plain.indexOf(candidate);
+    if (hit === -1) continue;
+    const end = hit + candidate.length - 1;
+    if (end >= chars.length) continue;
+    return { from: chars[hit], to: chars[end] + 1 };
   }
   return null;
 }

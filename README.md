@@ -10,15 +10,27 @@ AI-native contract workspace: import a DOCX, edit it in place, ask grounded ques
 
 | Area | Capability |
 |------|------------|
-| **Workspace** | Upload `.docx`, reopen stored docs, TipTap edit, Save, Export `.docx` |
-| **Structure** | Headings, paragraphs, lists, tables, embedded bitmap images |
-| **AI Edit** | Select a passage or whole document → propose before/after → Accept / Reject |
-| **Versions** | Save and Accept create checkpoints; Restore copies an older version forward |
-| **History** | Changes (user vs AI), conversation turns, pending redlines |
-| **Ask** | Clause retrieval over the active document, selection-aware answers, `[Source N]` citations, jump-to-passage, AST outline |
-| **Vectors** | Clause embeddings on ingest and on checkpoint; search uses the latest indexed version |
+| **Workspace (M1)** | Upload `.docx`, reopen stored docs, TipTap edit, Save, Export `.docx` |
+| **Structure (M1)** | Headings, paragraphs, lists (incl. nested indent on export), tables, embedded bitmap images, `data-clause` anchors in AST→HTML |
+| **AI Edit (M2)** | Select a passage or whole document → propose before/after → Accept / Reject |
+| **Whole-doc edits (M2)** | Uses the full indexed contract when it fits (~48k chars); otherwise top matching clauses. Excerpts are uniquified so apply hits the right place; optional occurrence index |
+| **Inline redlines (M2)** | Pending proposals show struck original + green inserted text in the editor |
+| **Versions (M3)** | Save and Accept create checkpoints; Restore copies an older version forward |
+| **History / audit (M3)** | Pending redlines with Accept/Reject, AI vs user changes, version linkage, conversation turns, filters, Jump-to-passage, audit timeline |
+| **Ask (M4)** | Clause retrieval over the active document, selection-first `[Selected]` grounding, `[Source N]` citations, jump-to-passage, AST outline (incl. sub-clauses) |
+| **Vectors (M4)** | Clause embeddings on ingest and on checkpoint; search uses the latest indexed version |
 
-Media for embedded images is stored under `backend/uploads/{document_id}/media/` and served at `/api/v1/documents/{id}/media/{filename}` (not base64 in HTML).
+Media for embedded images is stored under `backend/uploads/{document_id}/media/` and served at `/api/v1/documents/{id}/media/{filename}`.
+
+### Assessment modules
+
+| Module | Status |
+|--------|--------|
+| **M1** Workspace import / edit / export | Done (happy path); Word numbering / headers-footers not full fidelity |
+| **M2** AI scoped + document edits | Done (happy path + redlines / uniquified apply) |
+| **M3** Redlines, versions, audit trail | Done (happy path + History filters / timeline) |
+| **M4** Clause Q&A + navigation | Done (happy path; answers from retrieved passages) |
+| **M5** Playbooks / public legal sources | Not started |
 
 ---
 
@@ -55,7 +67,7 @@ flowchart TB
   end
 
   subgraph Intel["Contract intelligence"]
-    Retrieve["Retrieve top-k clauses - latest indexed version"]
+    Retrieve["Full indexed clauses or top-k - latest version"]
     LLM["Gemini grounded prompt"]
   end
 
@@ -95,8 +107,10 @@ flowchart TB
 
 - Not a full Word clone: headers/footers, complex styles, and auto-numbering models are not fully preserved.
 - Checkpointing re-parses via HTML ↔ DOCX; some structure can be lossier than the original ingest.
-- Whole-document AI edits retrieve a top set of clauses (not the entire file) and apply first-occurrence string patches.
-- Ask answers only from retrieved passages (`top_k`, default 8); it does not load the full document into every model call.
+- Whole-document AI edits use the full indexed clause set when it fits the prompt budget; larger contracts fall back to top matching clauses. Apply is still text-based (HTML-aware / uniquified excerpts), not AST node-id patches.
+- Inline redlines are TipTap decorations (strike + insert preview), not Word OOXML track changes.
+- Ask answers from retrieved passages (`top_k`, default 12) plus an optional selected passage; it does not load the full document into every model call.
+- **M5** (private playbooks / public legal refs / distinct source layers) is not implemented yet.
 
 ---
 

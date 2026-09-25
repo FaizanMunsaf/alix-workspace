@@ -7,9 +7,11 @@ def test_ast_to_html_keeps_headings_clauses_and_table():
     _, tree = parse_docx(build_msa_docx())
     markup = ast_to_html(tree)
 
-    assert "<h1>Master Services Agreement</h1>" in markup
-    assert "<h2>Article 1 Definitions</h2>" in markup
+    assert 'data-node-type="section"' in markup
+    assert "Master Services Agreement" in markup
+    assert "<h2" in markup and "Article 1 Definitions" in markup
     assert "<strong>1.1</strong>" in markup
+    assert 'data-clause="1.1"' in markup
     assert "Confidential Information" in markup
     assert "<table>" in markup
     assert "<th>Service</th>" in markup

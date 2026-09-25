@@ -14,14 +14,6 @@ class ProposeEditRequest(BaseModel):
     version_id: uuid.UUID | None = None
 
 
-class ApplyEditRequest(BaseModel):
-    before: str = ""
-    after: str = ""
-    html: str | None = None
-    version_id: uuid.UUID | None = None
-    change_id: uuid.UUID | None = None
-
-
 class EditPatch(BaseModel):
     id: str
     target: str
@@ -29,6 +21,7 @@ class EditPatch(BaseModel):
     after: str
     rationale: str
     status: Literal["pending"] = "pending"
+    occurrence: int = 0
 
 
 class ProposeEditResponse(BaseModel):
@@ -37,6 +30,15 @@ class ProposeEditResponse(BaseModel):
     instruction: str
     plan: list[str] = Field(default_factory=list)
     patches: list[EditPatch] = Field(default_factory=list)
+
+
+class ApplyEditRequest(BaseModel):
+    before: str = ""
+    after: str = ""
+    html: str | None = None
+    version_id: uuid.UUID | None = None
+    change_id: uuid.UUID | None = None
+    occurrence: int = 0
 
 
 class ApplyEditResponse(BaseModel):
