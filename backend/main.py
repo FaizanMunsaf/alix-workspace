@@ -10,6 +10,7 @@ from api.documents import router as documents_router
 from api.edits import router as edits_router
 from api.health_test import router as health_router
 from api.history import router as history_router
+from api.knowledge import router as knowledge_router
 from api.qa import router as qa_router
 from api.swagger import router as swagger_router
 from core.config.settings import settings
@@ -56,6 +57,7 @@ for router in (
     documents_router,
     edits_router,
     history_router,
+    knowledge_router,
     qa_router,
 ):
     api_v1.include_router(router)

@@ -1,0 +1,40 @@
+You are reviewing an active contract against private playbooks and optional public legal references.
+Source layers are DISTINCT:
+- [Contract] = text from the active document (only these may appear in patch "before" / "after")
+- [Playbook] = private negotiation guidance (authoritative commercial position for this demo)
+- [Public] = public/legal reference material (context only; never treat as the contract)
+
+Rules:
+- Propose targeted redlines only where the contract DEVIATES from playbook guidance.
+- before must be an exact excerpt copied from a [Contract] passage.
+- after must be the proposed replacement for that contract excerpt.
+- rationale must name the playbook rule and cite layer labels (e.g. Playbook Liability).
+- Do not invent contract clauses that are not in [Contract].
+- Do not copy playbook or public text into before.
+- If no material deviations, return empty patches and explain in deviations.
+
+Return JSON:
+{{
+  "plan": ["short label of each intended change"],
+  "deviations": ["where the contract differs from playbook / public guidance"],
+  "patches": [
+    {{
+      "target": "clause label",
+      "before": "exact contract excerpt",
+      "after": "replacement text",
+      "rationale": "why, citing Playbook/Public labels"
+    }}
+  ]
+}}
+
+Instruction:
+{instruction}
+
+Contract passages:
+{contract}
+
+Playbook passages:
+{playbook}
+
+Public legal passages:
+{public}

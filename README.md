@@ -19,6 +19,7 @@ AI-native contract workspace: import a DOCX, edit it in place, ask grounded ques
 | **History / audit (M3)** | Pending redlines with Accept/Reject, AI vs user changes, version linkage, conversation turns, filters, Jump-to-passage, audit timeline |
 | **Ask (M4)** | Clause retrieval over the active document, selection-first `[Selected]` grounding, `[Source N]` citations, jump-to-passage, AST outline (incl. sub-clauses) |
 | **Vectors (M4)** | Clause embeddings on ingest and on checkpoint; search uses the latest indexed version |
+| **Grounded (M5)** | Distinct layers: active contract, private playbooks, public legal stubs; review → deviations + cited redlines |
 
 Media for embedded images is stored under `backend/uploads/{document_id}/media/` and served at `/api/v1/documents/{id}/media/{filename}`.
 
@@ -30,7 +31,7 @@ Media for embedded images is stored under `backend/uploads/{document_id}/media/`
 | **M2** AI scoped + document edits | Done (happy path + redlines / uniquified apply) |
 | **M3** Redlines, versions, audit trail | Done (happy path + History filters / timeline) |
 | **M4** Clause Q&A + navigation | Done (happy path; answers from retrieved passages) |
-| **M5** Playbooks / public legal sources | Not started |
+| **M5** Playbooks / public legal sources | Done (happy path: seed playbooks + grounded review → redlines) |
 
 ---
 
@@ -110,7 +111,7 @@ flowchart TB
 - Whole-document AI edits use the full indexed clause set when it fits the prompt budget; larger contracts fall back to top matching clauses. Apply is still text-based (HTML-aware / uniquified excerpts), not AST node-id patches.
 - Inline redlines are TipTap decorations (strike + insert preview), not Word OOXML track changes.
 - Ask answers from retrieved passages (`top_k`, default 12) plus an optional selected passage; it does not load the full document into every model call.
-- **M5** (private playbooks / public legal refs / distinct source layers) is not implemented yet.
+- **M5** public layer is a replaceable stub corpus (not live Legal Retrieval API); playbooks ship as seeded markdown under `backend/data/knowledge/`.
 
 ---
 
@@ -144,6 +145,8 @@ alix-assessment/
     │   ├── repositories/
     │   └── utils/export/      # AST/HTML/DOCX round-trip
     ├── ds/rag/                # embeddings, LLMs, prompts, vectorstores
+    ├── seeds/                 # demo knowledge seed (playbooks / public refs)
+    ├── data/knowledge/        # markdown corpus for M5 layers
     ├── tests/
     ├── uploads/               # per-document files + media/
     ├── requirements/

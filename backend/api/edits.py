@@ -1,12 +1,14 @@
 from fastapi import APIRouter
 
 from api.services.edits import apply_edit, propose_edits
+from api.services.knowledge import review_against_knowledge
 from core.schemas.edits import (
     ApplyEditRequest,
     ApplyEditResponse,
     ProposeEditRequest,
     ProposeEditResponse,
 )
+from core.schemas.knowledge import GroundedReviewRequest, GroundedReviewResponse
 
 router = APIRouter(prefix="/documents", tags=["Edits"])
 
@@ -20,6 +22,16 @@ def propose_document_edits(document_id: str, body: ProposeEditRequest):
         html=body.html,
         scope=body.scope,
     )
+
+
+@router.post(
+    "/{document_id}/grounded/review",
+    response_model=GroundedReviewResponse,
+    tags=["Knowledge"],
+)
+def grounded_document_review(document_id: str, body: GroundedReviewRequest):
+    """Review the active contract against playbooks / public refs and propose redlines."""
+    return review_against_knowledge(document_id, body)
 
 
 @router.post("/{document_id}/edits/apply", response_model=ApplyEditResponse)

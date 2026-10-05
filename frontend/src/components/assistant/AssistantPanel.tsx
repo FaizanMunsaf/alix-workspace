@@ -6,9 +6,10 @@ import type { EditorSelection } from "../editor/ContractEditor";
 import { AskPanel } from "./AskPanel";
 import { DiffPanel } from "./DiffPanel";
 import { EditPanel } from "./EditPanel";
+import { GroundedPanel } from "./GroundedPanel";
 import { HistoryPanel } from "./HistoryPanel";
 
-type Tab = "edit" | "ask" | "diff" | "history";
+type Tab = "edit" | "ask" | "grounded" | "diff" | "history";
 
 type Props = {
   documentId: string | null;
@@ -42,6 +43,7 @@ export function AssistantPanel({
   onJumpToSource,
 }: Props) {
   const [tab, setTab] = useState<Tab>("edit");
+  const pending = changes.filter((change) => change.decision === "pending");
 
   return (
     <aside className="assistant">
@@ -50,6 +52,7 @@ export function AssistantPanel({
           [
             ["edit", "Edit"],
             ["ask", "Ask"],
+            ["grounded", "Grounded"],
             ["diff", "Diff"],
             ["history", "History"],
           ] as const
@@ -70,7 +73,7 @@ export function AssistantPanel({
           selection={selection}
           getHtml={getHtml}
           applyingId={applyingId}
-          pending={changes.filter((change) => change.decision === "pending")}
+          pending={pending}
           onAccept={onAcceptEdit}
           onReject={onRejectEdit}
           onProposed={onHistoryRefresh}
@@ -83,6 +86,18 @@ export function AssistantPanel({
           versions={versions}
           messages={messages}
           onAsked={onHistoryRefresh}
+          onJumpToSource={onJumpToSource}
+        />
+      )}
+      {tab === "grounded" && (
+        <GroundedPanel
+          documentId={documentId}
+          getHtml={getHtml}
+          applyingId={applyingId}
+          pending={pending}
+          onAccept={onAcceptEdit}
+          onReject={onRejectEdit}
+          onProposed={onHistoryRefresh}
           onJumpToSource={onJumpToSource}
         />
       )}
